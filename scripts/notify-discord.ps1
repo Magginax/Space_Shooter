@@ -16,6 +16,13 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# git prints UTF-8, but under Jenkins the console uses the Windows code page
+# (CP852 for Czech), so letters like S-caron in commit authors/messages broke.
+# The script itself stays ASCII-only: PowerShell 5.1 misreads BOM-less UTF-8.
+# Read program output as UTF-8 instead. try: there may be no console at all.
+try { [Console]::OutputEncoding = New-Object Text.UTF8Encoding $false } catch { }
+
 $junitPath = 'test-results\junit.xml'
 $reportDir = 'playwright-report'
 $zipPath = 'playwright-report.zip'
