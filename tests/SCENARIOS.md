@@ -75,15 +75,18 @@ Decoration only, so check behaviour, not pixels.
 - [ ] "< BACK" returns to the home page.
 - [ ] Under a sub-path (`BASE_PATH=/<repo>/` build) all links and assets load.
 
-## Database rules (manual, in the Supabase SQL Editor)
+## Database (`tests/db/`, real Supabase, `npm run test:db`)
 
-These check `supabase/schema.sql`. The test rows cannot be deleted through the
-API, so run them on a test project or delete the rows in the dashboard afterwards.
+Rows use game `'e2e-test'` and are deleted in `afterAll`.
 
-- [ ] Insert with nickname `''`, `'   '` or 21 characters fails (`scores_nickname_length`).
-- [ ] Insert with nickname `' ACE'` (leading space) fails.
-- [ ] Insert with score `-1` fails (`scores_score_not_negative`).
-- [ ] With the publishable key: select and insert work, update and delete do nothing.
+- [x] A saved score (nickname with spaces around) can be read back trimmed.
+- [x] Saving a test score does not change the Dodge top 10.
+- [x] Insert with score `-1`, nickname `' ACE'` or 21 characters fails (check constraints).
+- [x] The publishable key cannot update a score.
+- [x] Clean-up deletes all `'e2e-test'` rows.
+- [ ] Insert with nickname `''` or `'   '` fails (`scores_nickname_length`).
+- [ ] The publishable key cannot delete a Dodge score. Needs a safe way to
+      check it without risking real rows, e.g. a separate test project.
 
 ## Live check (manual, before a release)
 

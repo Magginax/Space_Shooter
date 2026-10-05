@@ -17,6 +17,7 @@ npm run dev              # http://localhost:5173
 | `npm run build` | Production build into `dist/` |
 | `npm run preview` | Serve `dist/` on http://localhost:4173 |
 | `npm test` | Build + run Playwright tests (Chromium, Firefox, WebKit) |
+| `npm run test:db` | Tests against the real Supabase from `.env` (writes and deletes `e2e-test` rows) |
 | `npm run test:ui` | Playwright interactive UI mode |
 | `npm run test:report` | Open the last HTML test report |
 

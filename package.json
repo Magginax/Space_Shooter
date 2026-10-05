@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview --port 4173 --strictPort",
     "test": "playwright test",
+    "test:db": "playwright test --config=playwright.db.config.js",
     "test:ui": "playwright test --ui",
     "test:report": "playwright show-report"
   },

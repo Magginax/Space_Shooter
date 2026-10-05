@@ -38,3 +38,14 @@ alter table public.scores
     check (nickname = btrim(nickname) and char_length(nickname) between 1 and 20),
   add constraint scores_score_not_negative
     check (score >= 0);
+
+-- Test clean-up (added 2026-10-05). tests/db/ saves rows with game = 'e2e-test'
+-- and deletes them afterwards. The public key may delete ONLY those rows;
+-- players' scores still cannot be deleted.
+-- If the table already exists, run only this block in the SQL Editor.
+create policy "Tests can delete their own rows"
+  on public.scores for delete
+  to anon
+  using (game = 'e2e-test');
+
+grant delete on public.scores to anon;
