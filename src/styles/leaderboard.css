@@ -159,33 +159,11 @@ a { color: var(--cyan); }
   box-shadow: none;
 }
 .retry:focus-visible,
-.play-link:focus-visible,
 .back-link:focus-visible {
   outline: 3px solid var(--yellow);
   outline-offset: 4px;
 }
 
-.play-link {
-  display: inline-block;
-  margin-top: 40px;
-  color: var(--yellow);
-  font-size: clamp(0.65rem, 2.8vw, 0.9rem);
-  text-decoration: none;
-}
-
-/* step-end = hard on/off, no fading. */
-.blink { animation: blink 1.2s step-end infinite; }
-@keyframes blink {
-  50% { opacity: 0; }
-}
-
-.hint {
-  margin-top: 20px;
-  color: var(--dim);
-  font-size: 0.55rem;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .scores tbody tr,
-  .blink { animation: none; }
+  .scores tbody tr { animation: none; }
 }

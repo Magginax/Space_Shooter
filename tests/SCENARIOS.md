@@ -73,7 +73,6 @@ Decoration only, so check behaviour, not pixels.
 
 - [ ] Home page nav link "Leaderboard" opens `leaderboard.html`.
 - [ ] "< BACK" returns to the home page.
-- [ ] "PRESS START TO PLAY" opens the home page at `#game`.
 - [ ] Under a sub-path (`BASE_PATH=/<repo>/` build) all links and assets load.
 
 ## Database rules (manual, in the Supabase SQL Editor)
