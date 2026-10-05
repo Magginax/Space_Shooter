@@ -1,35 +1,35 @@
-// Jenkins pipeline: install -> Playwright tests -> build.
-// Requires the "Docker Pipeline" and "JUnit" plugins and Docker on the agent.
-// The image tag MUST match the @playwright/test version in package.json.
+// Jenkins pipeline for a Windows agent: install -> Playwright tests -> build.
+// The agent needs Git and Node.js 24 on PATH (restart the Jenkins service after
+// installing them) and the "Pipeline", "Git" and "JUnit" plugins.
 pipeline {
-  agent {
-    docker {
-      image 'mcr.microsoft.com/playwright:v1.63.0-noble'
-      args '--ipc=host'
-    }
-  }
+  agent any
 
   environment {
     CI = 'true'
-    // Keep the npm cache inside the workspace (the container user has no writable $HOME).
-    npm_config_cache = "${WORKSPACE}/.npm"
+    // Keep the npm cache and the Playwright browsers inside the workspace, so the
+    // job works no matter which Windows account runs the Jenkins service.
+    npm_config_cache = "${WORKSPACE}\\.npm"
+    PLAYWRIGHT_BROWSERS_PATH = "${WORKSPACE}\\.ms-playwright"
   }
 
   options {
-    timeout(time: 20, unit: 'MINUTES')
+    timeout(time: 30, unit: 'MINUTES') // the first run also downloads the browsers
     buildDiscarder(logRotator(numToKeepStr: '20'))
   }
 
   stages {
     stage('Install') {
       steps {
-        sh 'npm ci'
+        bat 'npm ci'
+        // Chromium, Firefox and WebKit for the installed @playwright/test version.
+        // Skipped quickly when they are already downloaded.
+        bat 'npx playwright install'
       }
     }
 
     stage('Test') {
       steps {
-        sh 'npm test'
+        bat 'npm test'
       }
       post {
         always {
@@ -41,7 +41,7 @@ pipeline {
 
     stage('Build') {
       steps {
-        sh 'npm run build'
+        bat 'npm run build'
         archiveArtifacts artifacts: 'dist/**', fingerprint: true
       }
     }

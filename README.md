@@ -84,10 +84,15 @@ npm run dev              # http://localhost:5173
 
 ## Jenkins
 
-The `Jenkinsfile` runs inside the official Playwright Docker image, so the
-agent needs Docker plus the **Docker Pipeline** and **JUnit** plugins. Create a
-Pipeline (or Multibranch Pipeline) job pointing at this repo. Test results are
-published as JUnit and the HTML report is archived.
+The `Jenkinsfile` runs on a **Windows** agent without Docker. The agent needs:
 
-When upgrading `@playwright/test`, update the image tag in the `Jenkinsfile`
-to the same version.
+1. **Git for Windows** and **Node.js 24** on PATH (restart the Jenkins service
+   after installing them).
+2. The **Pipeline**, **Git** and **JUnit** plugins.
+3. A **Pipeline** job: *Pipeline script from SCM* -> Git -> this repo, branch
+   `*/main`, script path `Jenkinsfile`. Without a public URL for GitHub
+   webhooks, use **Poll SCM** (e.g. `H/5 * * * *`).
+
+The first run downloads Chromium, Firefox and WebKit into the workspace
+(`.ms-playwright`), later runs reuse them. Test results are published as
+JUnit and the HTML report is archived. Port 4173 must be free on the agent.
