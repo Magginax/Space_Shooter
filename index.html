@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>Space_Shooter</title>
+  </head>
+  <body>
+    <header class="site-header">
+      <h1>Space_Shooter</h1>
+      <nav>
+        <a href="#about">About</a>
+        <a href="#game">Game</a>
+      </nav>
+    </header>
+
+    <main>
+      <section id="about">
+        <h2>About</h2>
+        <p>A static site template with a small canvas game engine.</p>
+      </section>
+
+      <section id="game">
+        <h2>Dodge</h2>
+        <p>Use <kbd>&larr;</kbd> <kbd>&rarr;</kbd> (or A / D) to avoid the falling blocks.</p>
+        <div class="game-hud">
+          <span>Score: <strong data-testid="score">0</strong></span>
+          <button type="button" data-testid="start-button">Start</button>
+        </div>
+        <canvas id="game-canvas" width="480" height="320" data-testid="game-canvas" data-state="idle"></canvas>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
