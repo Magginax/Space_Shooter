@@ -50,6 +50,11 @@ jobs:
         env:
           # Project Pages live at https://<user>.github.io/<repo>/
           BASE_PATH: /${{ github.event.repository.name }}/
+          # Vite bakes these into the JS at build time. Repo Settings -> Secrets
+          # and variables -> Actions. Without them the leaderboard shows "offline".
+          # Only this job gets them, so tests never touch the real database.
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

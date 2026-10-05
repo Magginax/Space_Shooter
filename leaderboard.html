@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+    <title>Leaderboard - Space_Shooter</title>
+  </head>
+  <body class="arcade">
+    <canvas class="space" data-testid="space-canvas" aria-hidden="true"></canvas>
+    <div class="crt" aria-hidden="true"></div>
+
+    <main class="cabinet">
+      <a class="back-link" href="./">&lt; BACK</a>
+
+      <h1 class="title">
+        <span class="title-top">SPACE</span>
+        <span class="title-bottom">SHOOTER</span>
+      </h1>
+      <p class="subtitle">- HIGH SCORES -</p>
+
+      <section class="board" data-testid="leaderboard" data-state="loading" aria-live="polite">
+        <table class="scores" data-testid="leaderboard-table" hidden>
+          <thead>
+            <tr>
+              <th scope="col">RANK</th>
+              <th scope="col">NAME</th>
+              <th scope="col">SCORE</th>
+            </tr>
+          </thead>
+          <tbody data-testid="leaderboard-rows"></tbody>
+        </table>
+        <p class="status" data-testid="leaderboard-status">LOADING...</p>
+        <button type="button" class="retry" data-testid="retry-button" hidden>RETRY</button>
+      </section>
+
+      <a class="play-link blink" href="./#game">PRESS START TO PLAY</a>
+      <p class="hint">ARROW KEYS OR MOUSE STEER THE SHIP</p>
+    </main>
+
+    <script type="module" src="/src/leaderboard.js"></script>
+  </body>
+</html>

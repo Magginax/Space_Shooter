@@ -28,3 +28,13 @@ create policy "Anyone can submit a score"
   with check (true);
 
 grant select, insert on public.scores to anon;
+
+-- Data rules (added 2026-10-05). src/services/leaderboard.js checks the same
+-- rules in the browser, but anyone can call the API directly with the public
+-- key, so the database is where they are really enforced.
+-- If the table already exists, run only this block in the SQL Editor.
+alter table public.scores
+  add constraint scores_nickname_length
+    check (nickname = btrim(nickname) and char_length(nickname) between 1 and 20),
+  add constraint scores_score_not_negative
+    check (score >= 0);

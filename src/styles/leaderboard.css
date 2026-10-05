@@ -1,0 +1,191 @@
+/* Arcade look: pixel font, hard edges, hard shadows, no rounded corners. */
+:root {
+  --bg: #05010f;
+  --panel: rgb(5 1 15 / 0.82);
+  --text: #e6e9f5;
+  --dim: #8a90c8;
+  --cyan: #29f3ff;
+  --magenta: #ff2bd6;
+  --yellow: #ffe14d;
+  --gold: #ffd23f;
+  --silver: #c9d3e6;
+  --bronze: #e08a4a;
+  --font: 'Press Start 2P', ui-monospace, monospace;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body.arcade {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  line-height: 1.6;
+}
+
+/* Starfield behind everything; pixelated so the small canvas scales up crisp. */
+.space {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  z-index: 0;
+}
+
+/* CRT scanlines + darker corners, on top of everything but never clickable. */
+.crt {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background:
+    repeating-linear-gradient(to bottom, rgb(0 0 0 / 0.22) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at center, transparent 60%, rgb(0 0 0 / 0.55) 100%);
+}
+
+.cabinet {
+  position: relative;
+  z-index: 1;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 160px; /* bottom space so the ship can fly below the board */
+  text-align: center;
+}
+
+a { color: var(--cyan); }
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 24px;
+  font-size: 0.7rem;
+  text-decoration: none;
+  float: left;
+}
+.back-link:hover,
+.back-link:focus-visible { color: var(--yellow); }
+
+.title {
+  clear: both;
+  margin: 0;
+  font-size: clamp(1.6rem, 8vw, 3.6rem);
+  font-weight: normal;
+  line-height: 1.15;
+}
+.title span { display: block; }
+.title-top {
+  color: var(--cyan);
+  text-shadow: 4px 4px 0 var(--magenta);
+}
+.title-bottom {
+  color: var(--yellow);
+  text-shadow: 4px 4px 0 var(--magenta);
+}
+
+.subtitle {
+  margin: 20px 0 28px;
+  color: var(--magenta);
+  font-size: clamp(0.6rem, 2.5vw, 0.85rem);
+  letter-spacing: 0.2em;
+}
+
+.board {
+  background: var(--panel);
+  border: 4px solid var(--cyan);
+  box-shadow: 8px 8px 0 var(--magenta);
+  padding: 20px 16px;
+  min-height: 140px;
+}
+
+.scores {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: clamp(0.55rem, 2.6vw, 0.85rem);
+}
+
+.scores th {
+  color: var(--yellow);
+  font-weight: normal;
+  padding: 0 4px 14px;
+  border-bottom: 4px dotted var(--dim);
+}
+
+.scores td { padding: 12px 4px; }
+
+.scores th:first-child,
+.scores td:first-child { text-align: left; width: 5ch; }
+.scores th:last-child,
+.scores td:last-child { text-align: right; }
+.scores td:nth-child(2) { overflow-wrap: anywhere; }
+
+.scores tr.first { color: var(--gold); }
+.scores tr.second { color: var(--silver); }
+.scores tr.third { color: var(--bronze); }
+
+/* Rows appear one after another in hard steps, like an old high-score screen. */
+.scores tbody tr {
+  animation: row-in 0.3s steps(3) both;
+  animation-delay: calc(var(--i) * 90ms);
+}
+@keyframes row-in {
+  from { opacity: 0; transform: translateX(-24px); }
+}
+
+.status {
+  margin: 36px 0;
+  color: var(--cyan);
+  font-size: clamp(0.6rem, 2.6vw, 0.85rem);
+}
+.board[data-state='error'] .status { color: var(--magenta); }
+.board[data-state='offline'] .status { color: var(--dim); }
+
+.retry {
+  margin-bottom: 12px;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 0;
+  background: var(--yellow);
+  color: var(--bg);
+  font: inherit;
+  font-size: 0.75rem;
+  box-shadow: 4px 4px 0 var(--magenta);
+  cursor: pointer;
+}
+/* "Pressed" button: it moves onto its shadow. */
+.retry:active {
+  transform: translate(4px, 4px);
+  box-shadow: none;
+}
+.retry:focus-visible,
+.play-link:focus-visible,
+.back-link:focus-visible {
+  outline: 3px solid var(--yellow);
+  outline-offset: 4px;
+}
+
+.play-link {
+  display: inline-block;
+  margin-top: 40px;
+  color: var(--yellow);
+  font-size: clamp(0.65rem, 2.8vw, 0.9rem);
+  text-decoration: none;
+}
+
+/* step-end = hard on/off, no fading. */
+.blink { animation: blink 1.2s step-end infinite; }
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+.hint {
+  margin-top: 20px;
+  color: var(--dim);
+  font-size: 0.55rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scores tbody tr,
+  .blink { animation: none; }
+}

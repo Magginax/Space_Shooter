@@ -25,10 +25,14 @@ npm run dev              # http://localhost:5173
 ```
 .
 ├── index.html                 # Page entry (Vite injects the built JS/CSS)
+├── leaderboard.html           # High-score page (listed in vite.config.js)
 ├── public/                    # Static files copied as-is (images, sounds, favicon)
 ├── src/
 │   ├── main.js                # Wires the page to the game
-│   ├── styles/main.css
+│   ├── leaderboard.js         # Loads and shows the high scores
+│   ├── styles/                # main.css, leaderboard.css
+│   ├── effects/
+│   │   └── SpaceBackground.js # Starfield + ship behind the leaderboard
 │   ├── engine/                # Reusable game engine
 │   │   ├── GameLoop.js        # Fixed-timestep update + render loop
 │   │   ├── Input.js           # Keyboard state
@@ -36,10 +40,12 @@ npm run dev              # http://localhost:5173
 │   ├── games/
 │   │   └── dodge/DodgeGame.js # Example game built on the engine
 │   └── services/
-│       └── leaderboard.js     # Supabase leaderboard (not used by the page yet)
+│       ├── leaderboard.js     # Supabase client + input checks
+│       └── scores.js          # saveScore() / loadTopScores(), configured from .env
 ├── supabase/schema.sql        # Database table + access rules (run in Supabase)
 ├── tests/e2e/                 # Playwright browser tests
 ├── tests/unit/                # Playwright tests for plain JS modules (no browser)
+├── tests/SCENARIOS.md         # Planned test scenarios not written yet
 ├── playwright.config.js
 ├── vite.config.js
 ├── Jenkinsfile                # Jenkins CI pipeline
@@ -52,6 +58,21 @@ npm run dev              # http://localhost:5173
 2. Add a `<canvas>` for it in `index.html` and start it from `src/main.js`.
 3. Mirror the game state on the canvas (`data-state`) so tests can check it.
 4. Add a spec in `tests/e2e/`.
+
+## Leaderboard
+
+1. Run `supabase/schema.sql` in the Supabase SQL Editor.
+2. Copy `.env.example` to `.env` and fill in the project URL
+   (`https://<project-id>.supabase.co`) and the publishable key.
+3. Save a score from any game:
+
+   ```js
+   import { saveScore } from '../../services/scores.js';
+   await saveScore('ACE', 1200); // game defaults to 'dodge'
+   ```
+
+   It rejects with a readable error if the nickname (1-20 characters) or
+   score (whole number, 0 or more) is invalid, or the server refuses it.
 
 ## GitHub Pages
 

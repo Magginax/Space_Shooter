@@ -1,5 +1,33 @@
 import { createClient } from '@supabase/supabase-js';
 
+export const NICKNAME_MAX_LENGTH = 20;
+
+/**
+ * Checks a score before it is sent and returns the row to insert.
+ * Throws a readable error instead of letting the server reject it.
+ *
+ * The database has the same rules (see supabase/schema.sql), because anyone
+ * can call the API directly with the public key and skip this check.
+ */
+export function validateScore({ game, nickname, score }) {
+  if (typeof game !== 'string' || game.trim() === '') {
+    throw new Error('Game must be a non-empty string');
+  }
+
+  const name = typeof nickname === 'string' ? nickname.trim() : '';
+  // [...name] counts characters the way the database does, so an emoji is 1, not 2.
+  const length = [...name].length;
+  if (length < 1 || length > NICKNAME_MAX_LENGTH) {
+    throw new Error(`Nickname must be 1-${NICKNAME_MAX_LENGTH} characters long`);
+  }
+
+  if (!Number.isInteger(score) || score < 0) {
+    throw new Error('Score must be a whole number, 0 or more');
+  }
+
+  return { game, nickname: name, score };
+}
+
 /**
  * Leaderboard backed by the Supabase "scores" table (see supabase/schema.sql).
  *
@@ -30,7 +58,8 @@ export function createLeaderboard({ url, key, fetch } = {}) {
     },
 
     async submitScore({ game, nickname, score }) {
-      const { error } = await supabase.from('scores').insert({ game, nickname, score });
+      const row = validateScore({ game, nickname, score });
+      const { error } = await supabase.from('scores').insert(row);
       if (error) throw new Error(`Could not submit score: ${error.message}`);
     },
   };
