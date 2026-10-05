@@ -96,3 +96,18 @@ The `Jenkinsfile` runs on a **Windows** agent without Docker. The agent needs:
 The first run downloads Chromium, Firefox and WebKit into the workspace
 (`.ms-playwright`), later runs reuse them. Test results are published as
 JUnit and the HTML report is archived. Port 4173 must be free on the agent.
+
+### Discord notifications
+
+After every build `scripts/notify-discord.ps1` posts the result (commit, test
+counts, failed tests) with the zipped Playwright report to a Discord channel.
+
+1. Discord: *Server Settings -> Integrations -> Webhooks -> New Webhook*, pick
+   the channel, *Copy Webhook URL*.
+2. Jenkins: *Manage Jenkins -> Credentials -> System -> Global -> Add
+   Credentials*, kind **Secret text**, secret = the webhook URL, ID
+   **`discord-webhook`**. Needs the **Credentials Binding** plugin.
+
+Never commit the webhook URL: anyone who has it can post to the channel.
+Preview the message without sending it (after `npm test`):
+`powershell -ExecutionPolicy Bypass -File scripts\notify-discord.ps1 -Status SUCCESS -Build 1 -DryRun`

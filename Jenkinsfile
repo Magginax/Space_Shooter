@@ -46,4 +46,15 @@ pipeline {
       }
     }
   }
+
+  post {
+    // Every build posts its result and the Playwright report to the team's
+    // Discord channel. The webhook URL is the Jenkins credential
+    // "discord-webhook" (kind: Secret text), never stored in the repo.
+    always {
+      withCredentials([string(credentialsId: 'discord-webhook', variable: 'DISCORD_WEBHOOK')]) {
+        bat "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\notify-discord.ps1 -Status ${currentBuild.currentResult} -Build ${env.BUILD_NUMBER}"
+      }
+    }
+  }
 }
