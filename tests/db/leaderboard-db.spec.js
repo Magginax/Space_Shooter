@@ -10,7 +10,7 @@ import { usernameToEmail } from '../../src/services/auth.js';
  * Only logged-in players may save scores, so the tests log in as the test
  * account (role 'test', TEST_USERNAME / TEST_PASSWORD in .env).
  * Rows are written to the same table and through the same code as players'
- * scores, but under their own game name, so they never show up on the Dodge
+ * scores, but under their own game name, so they never show up on the Space Shooter
  * leaderboard. afterAll deletes them again (allowed only for test accounts and
  * this game, see the "Test accounts can delete test rows" policy in supabase/schema.sql).
  */
@@ -59,10 +59,10 @@ test('a saved score can be read back', async () => {
   expect(rows).toContainEqual(expect.objectContaining({ nickname, score: 4242 }));
 });
 
-test('test scores do not change the Dodge leaderboard', async () => {
-  const before = await leaderboard.getTopScores('dodge');
+test('test scores do not change the Space Shooter leaderboard', async () => {
+  const before = await leaderboard.getTopScores('space-shooter');
   await leaderboard.submitScore({ game: TEST_GAME, nickname, score: 999999 });
-  const after = await leaderboard.getTopScores('dodge');
+  const after = await leaderboard.getTopScores('space-shooter');
 
   expect(after).toEqual(before);
 });

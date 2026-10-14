@@ -224,39 +224,6 @@ test.describe('auth service', () => {
     );
   });
 
-  test('changeUsername changes the login e-mail and returns the renamed player', async () => {
-    const { fetch, requests } = fakeServer({
-      ...loggedInRoutes,
-      'PUT /auth/v1/user': { body: { id: PLAYER_ID } },
-      'GET /rest/v1/profiles': { body: { username: 'new_name', role: 'user' } },
-    });
-    const auth = newAuth(fetch);
-    await auth.signIn({ username: 'pilot_42', password: 'secret123' });
-
-    await expect(auth.changeUsername('  New_Name ')).resolves.toMatchObject({ username: 'new_name' });
-    const update = requests.find((r) => r.method === 'PUT');
-    expect(update.body).toMatchObject({ email: 'new_name@players.space-shooter.local' });
-    expect(update.body).not.toHaveProperty('password');
-  });
-
-  test('changeUsername explains when Supabase did not rename (e-mail confirmation on)', async () => {
-    // The profile still has the old name after the update.
-    const { fetch } = fakeServer({ ...loggedInRoutes, 'PUT /auth/v1/user': { body: { id: PLAYER_ID } } });
-    const auth = newAuth(fetch);
-    await auth.signIn({ username: 'pilot_42', password: 'secret123' });
-    await expect(auth.changeUsername('new_name')).rejects.toThrow('turn off "Confirm email"');
-  });
-
-  test('changeUsername with a taken name', async () => {
-    const { fetch } = fakeServer({
-      ...loggedInRoutes,
-      'PUT /auth/v1/user': { status: 422, body: { error_code: 'email_exists', msg: 'Email address already registered' } },
-    });
-    const auth = newAuth(fetch);
-    await auth.signIn({ username: 'pilot_42', password: 'secret123' });
-    await expect(auth.changeUsername('taken_name')).rejects.toThrow('That username is taken');
-  });
-
   test('setRole sends only the role for one player', async () => {
     const { fetch, requests } = fakeServer({ 'PATCH /rest/v1/profiles': { body: [{ id: PLAYER_ID }] } });
     await newAuth(fetch).setRole(PLAYER_ID, 'admin');

@@ -25,7 +25,7 @@
 
       <!-- data-access: "checking" -> "granted" (logged in or guest) or "locked". -->
       <section id="game" data-testid="game-section" data-access="checking">
-        <h2>Dodge</h2>
+        <h2>Space Shooter</h2>
 
         <div class="game-lock" data-testid="game-lock" hidden>
           <p data-testid="game-lock-message">Log in to play.</p>
@@ -38,11 +38,7 @@
             <span data-testid="guest-note" hidden>(guest: scores are not saved)</span>
             <a data-testid="account-link" href="./views/login.html">Account</a>
           </p>
-          <p>Use <kbd>&larr;</kbd> <kbd>&rarr;</kbd> (or A / D) to avoid the falling blocks.</p>
-          <div class="game-hud">
-            <span>Score: <strong data-testid="score">0</strong></span>
-            <button type="button" data-testid="start-button">Start</button>
-          </div>
+          <!-- The Space Shooter game draws here (src/games/space-shooter/). -->
           <canvas id="game-canvas" width="480" height="320" data-testid="game-canvas" data-state="idle"></canvas>
         </div>
       </section>

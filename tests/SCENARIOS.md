@@ -20,7 +20,7 @@ Status: `[ ]` = not written yet, `[x]` = done.
 
 ## Unit: input checks (`validateScore` in `src/services/leaderboard.js`)
 
-- [ ] Valid input passes: `{ game: 'dodge', nickname: 'ACE', score: 1200 }`.
+- [ ] Valid input passes: `{ game: 'space-shooter', nickname: 'ACE', score: 1200 }`.
 - [ ] Spaces around the nickname are trimmed (`'  ACE  '` -> `'ACE'`).
 - [ ] Nickname that is empty or only spaces is rejected.
 - [ ] Nickname with 20 characters passes, 21 is rejected.
@@ -36,9 +36,9 @@ Status: `[ ]` = not written yet, `[x]` = done.
 Needs `import.meta.env`, so it is easiest to test through the page (E2E) or
 by moving the "configured?" logic into a function that takes the env object.
 
-- [ ] `saveScore(nickname, score)` uses game `'dodge'` by default.
+- [ ] `saveScore(nickname, score)` uses game `'space-shooter'` by default.
 - [ ] `saveScore(nickname, score, 'other')` sends the given game.
-- [ ] `loadTopScores()` asks for 10 rows of `'dodge'` by default.
+- [ ] `loadTopScores()` asks for 10 rows of `'space-shooter'` by default.
 - [ ] Without configuration both functions reject with
       "Leaderboard is not configured...".
 
@@ -51,7 +51,7 @@ State is in `data-state` on `[data-testid="leaderboard"]`:
 - [ ] With scores: state `ready`, rows in server order, ranks `1ST 2ND 3RD 4TH...`,
       scores padded to 6 digits (`42` -> `000042`).
 - [ ] Top three rows have classes `first`, `second`, `third`.
-- [ ] The request asks for `game=eq.dodge`, `limit=10`, sorted by score desc.
+- [ ] The request asks for `game=eq.space-shooter`, `limit=10`, sorted by score desc.
 - [ ] No scores: state `empty`, text "NO SCORES YET. BE THE FIRST!", table hidden.
 - [ ] Server error (HTTP 500): state `error`, text "CONNECTION LOST", RETRY visible.
 - [ ] RETRY after the server recovers: state `ready`, RETRY hidden.
@@ -79,12 +79,12 @@ Decoration only, so check behaviour, not pixels.
 Rows use game `'e2e-test'` and are deleted in `afterAll`.
 
 - [x] A saved score (nickname with spaces around) can be read back trimmed.
-- [x] Saving a test score does not change the Dodge top 10.
+- [x] Saving a test score does not change the Space Shooter top 10.
 - [x] Insert with score `-1`, nickname `' ACE'` or 21 characters fails (check constraints).
 - [x] The publishable key cannot update a score.
 - [x] Clean-up deletes all `'e2e-test'` rows.
 - [ ] Insert with nickname `''` or `'   '` fails (`scores_nickname_length`).
-- [ ] The publishable key cannot delete a Dodge score. Needs a safe way to
+- [ ] The publishable key cannot delete a Space Shooter score. Needs a safe way to
       check it without risking real rows, e.g. a separate test project.
 
 ## Accounts
@@ -99,7 +99,7 @@ database (`tests/db/auth-db.spec.js`, needs the test account in `.env`).
 - [x] Login page: success shows pilot + rank, wrong password costs a heart, 3 = GAME OVER, hearts refill.
 - [x] Login survives a reload; LOGOUT shows the form again.
 - [x] Reduced motion = static LCD; no page errors.
-- [x] DB: test account has role `test`, sees only itself, cannot become admin or rename itself.
+- [x] DB: test account has role `test`, sees only itself, cannot become admin or change its username directly.
 - [x] DB: visitors without login cannot read profiles.
 - [ ] DB: an admin can list everyone and change roles (needs an admin test account).
 - [ ] Session expired / refresh token invalid: page shows the form again.
@@ -112,3 +112,11 @@ database (`tests/db/auth-db.spec.js`, needs the test account in `.env`).
 - [ ] `saveScore()` from the game makes the new score appear on the leaderboard.
 - [ ] On GitHub Pages the leaderboard is not `offline`
       (needs the GitHub secrets passed to the build in `deploy.yml`).
+
+## Removed for now (will come back)
+
+- Dodge game tests: the game was removed; Space Shooter gets its own tests
+  once it has game logic (`src/games/space-shooter/`).
+- Rename tests (unit, e2e, DB): renaming will change (separate nickname or a
+  real rename), so its tests come back with the final version.
+- [ ] Space Shooter: game over of a logged-in player saves the score; a guest's does not.

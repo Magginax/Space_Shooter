@@ -43,14 +43,17 @@ npm run dev              # http://localhost:5173
 │   │   ├── Input.js           # Keyboard state
 │   │   └── math.js            # clamp, random, collision helpers
 │   ├── games/
-│   │   └── dodge/DodgeGame.js # Example game built on the engine
+│   │   └── space-shooter/SpaceShooterGame.js  # Game skeleton (loop, states, score hooks)
 │   └── services/
 │       ├── leaderboard.js     # Supabase client + input checks
 │       ├── scores.js          # saveScore() / loadTopScores(), configured from .env
 │       ├── auth.js            # Accounts: sign up / in / out, roles, input checks
 │       └── account.js         # The site's auth instance, configured from .env
 ├── supabase/schema.sql        # Database table + access rules (run in Supabase)
-├── tests/e2e/                 # Playwright browser tests
+├── tests/e2e/                 # Playwright browser tests: specs call only page-object methods
+│   ├── pages/                 # Page objects (HomePage, LoginPage): selectors + checks
+│   ├── support/FakeSupabase.js  # Fake Supabase server for browser tests
+│   └── fixtures.js            # test.extend: gives specs supabase, homePage, loginPage
 ├── tests/unit/                # Playwright tests for plain JS modules (no browser)
 ├── tests/SCENARIOS.md         # Planned test scenarios not written yet
 ├── playwright.config.js
@@ -64,7 +67,7 @@ npm run dev              # http://localhost:5173
 1. Create `src/games/<name>/<Name>Game.js` using `GameLoop` and `Input` from `src/engine`.
 2. Add a `<canvas>` for it in `index.html` and start it from `src/main.js`.
 3. Mirror the game state on the canvas (`data-state`) so tests can check it.
-4. Add a spec in `tests/e2e/`.
+4. Add page-object methods in `tests/e2e/pages/` and a spec in `tests/e2e/` that only calls them.
 
 ## Leaderboard
 
@@ -75,7 +78,7 @@ npm run dev              # http://localhost:5173
 
    ```js
    import { saveScore } from '../../services/scores.js';
-   await saveScore('ACE', 1200); // game defaults to 'dodge'
+   await saveScore('ACE', 1200); // game defaults to 'space-shooter'
    ```
 
    It rejects with a readable error if the nickname (1-20 characters) or

@@ -33,7 +33,7 @@ test.describe('leaderboard service', () => {
     const client = createClient(config.url, config.key, { auth: { persistSession: false }, global: { fetch } });
     const leaderboard = createLeaderboard({ client });
 
-    await leaderboard.getTopScores('dodge');
+    await leaderboard.getTopScores('space-shooter');
     expect(requests[0].url.origin).toBe(config.url);
   });
 
@@ -45,12 +45,12 @@ test.describe('leaderboard service', () => {
     const { fetch, requests } = fakeFetch({ body: JSON.stringify(rows) });
     const leaderboard = createLeaderboard({ ...config, fetch });
 
-    await expect(leaderboard.getTopScores('dodge', 5)).resolves.toEqual(rows);
+    await expect(leaderboard.getTopScores('space-shooter', 5)).resolves.toEqual(rows);
 
     const { url, method } = requests[0];
     expect(method).toBe('GET');
     expect(url.pathname).toBe('/rest/v1/scores');
-    expect(url.searchParams.get('game')).toBe('eq.dodge');
+    expect(url.searchParams.get('game')).toBe('eq.space-shooter');
     expect(url.searchParams.get('order')).toBe('score.desc,created_at.asc');
     expect(url.searchParams.get('limit')).toBe('5');
   });
@@ -59,11 +59,11 @@ test.describe('leaderboard service', () => {
     const { fetch, requests } = fakeFetch({ status: 201 });
     const leaderboard = createLeaderboard({ ...config, fetch });
 
-    await leaderboard.submitScore({ game: 'dodge', nickname: 'ana', score: 42 });
+    await leaderboard.submitScore({ game: 'space-shooter', nickname: 'ana', score: 42 });
 
     expect(requests[0].method).toBe('POST');
     expect(requests[0].url.pathname).toBe('/rest/v1/scores');
-    expect(requests[0].body).toEqual({ game: 'dodge', nickname: 'ana', score: 42 });
+    expect(requests[0].body).toEqual({ game: 'space-shooter', nickname: 'ana', score: 42 });
   });
 
   test('server errors become readable exceptions', async () => {
@@ -73,8 +73,8 @@ test.describe('leaderboard service', () => {
     });
     const leaderboard = createLeaderboard({ ...config, fetch });
 
-    await expect(leaderboard.getTopScores('dodge')).rejects.toThrow('Could not load scores: Invalid API key');
-    await expect(leaderboard.submitScore({ game: 'dodge', nickname: 'x', score: 1 })).rejects.toThrow(
+    await expect(leaderboard.getTopScores('space-shooter')).rejects.toThrow('Could not load scores: Invalid API key');
+    await expect(leaderboard.submitScore({ game: 'space-shooter', nickname: 'x', score: 1 })).rejects.toThrow(
       'Could not submit score: Invalid API key',
     );
   });

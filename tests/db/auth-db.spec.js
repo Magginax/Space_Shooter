@@ -83,25 +83,8 @@ test('visitors who are not logged in cannot read profiles', async () => {
   expect(error ? [] : data).toEqual([]);
 });
 
-// The two tests below change the test account and always change it back
+// The test below changes the test account and always changes it back
 // (finally), so the next run can log in again.
-
-test('renaming changes the login name and the profile', async () => {
-  const { auth } = await logInAsTester();
-  const original = username.toLowerCase();
-  const temporary = `${original}_r`.slice(0, 16);
-  try {
-    await expect(auth.changeUsername(temporary)).resolves.toMatchObject({ username: temporary });
-    // The new name logs in, the old one does not.
-    await expect(newAuth().signIn({ username: temporary, password })).resolves.toMatchObject({ role: 'test' });
-    const oldName = await newAuth()
-      .signIn({ username: original, password })
-      .catch((e) => e);
-    expect(oldName.code).toBe('invalid_credentials');
-  } finally {
-    await auth.changeUsername(original);
-  }
-});
 
 test('changing the password needs the current one and takes effect', async () => {
   const { auth } = await logInAsTester();

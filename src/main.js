@@ -1,6 +1,7 @@
 import './styles/main.css';
-import { DodgeGame } from './games/dodge/DodgeGame.js';
+import { SpaceShooterGame } from './games/space-shooter/SpaceShooterGame.js';
 import { currentPlayer, isAuthConfigured } from './services/account.js';
+import { saveScore } from './services/scores.js';
 import { loginUrl } from './services/redirect.js';
 
 const section = document.querySelector('[data-testid="game-section"]');
@@ -11,11 +12,19 @@ const gameArea = document.querySelector('[data-testid="game-area"]');
 const playerName = document.querySelector('[data-testid="player-name"]');
 const guestNote = document.querySelector('[data-testid="guest-note"]');
 const canvas = document.querySelector('#game-canvas');
-const scoreEl = document.querySelector('[data-testid="score"]');
-const startBtn = document.querySelector('[data-testid="start-button"]');
 
 // After logging in, come back straight to the game.
 const loginToGame = loginUrl(import.meta.env.BASE_URL, `${location.pathname}#game`);
+
+/** Only logged-in players get their score saved; guests just play. */
+async function saveFinalScore(player, score) {
+  if (player.isGuest) return;
+  try {
+    await saveScore(player.username, score);
+  } catch (error) {
+    console.error(error); // the game goes on even if the leaderboard is down
+  }
+}
 
 function startGame(player) {
   playerName.textContent = player.username;
@@ -24,15 +33,9 @@ function startGame(player) {
   section.dataset.access = 'granted';
 
   // The game only exists for players: without login there is nothing to start.
-  const game = new DodgeGame(canvas, {
-    onScore: (score) => {
-      scoreEl.textContent = String(score);
-    },
-  });
-
-  startBtn.addEventListener('click', () => {
-    game.start();
-    startBtn.blur(); // so Space/Enter while playing doesn't click the button again
+  // TODO: start it (game.start()) once the game has a start screen or button.
+  const game = new SpaceShooterGame(canvas, {
+    onGameOver: (score) => saveFinalScore(player, score),
   });
 
   // Stop arrow keys from scrolling the page while playing.

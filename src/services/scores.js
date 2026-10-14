@@ -14,7 +14,7 @@ import { auth } from './account.js';
  */
 const leaderboard = createLeaderboard({ client: auth?.client });
 
-export const DEFAULT_GAME = 'dodge';
+export const DEFAULT_GAME = 'space-shooter';
 
 /** False when .env is missing, so pages can show "offline" instead of an error. */
 export const isLeaderboardConfigured = leaderboard !== null;
