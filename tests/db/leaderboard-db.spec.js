@@ -2,23 +2,41 @@ import { test, expect } from '@playwright/test';
 import { loadEnv } from 'vite';
 import { createClient } from '@supabase/supabase-js';
 import { createLeaderboard } from '../../src/services/leaderboard.js';
+import { usernameToEmail } from '../../src/services/auth.js';
 
 /**
  * Talks to the REAL Supabase database from .env. Run with `npm run test:db`.
  *
+ * Only logged-in players may save scores, so the tests log in as the test
+ * account (role 'test', TEST_USERNAME / TEST_PASSWORD in .env).
  * Rows are written to the same table and through the same code as players'
  * scores, but under their own game name, so they never show up on the Dodge
- * leaderboard. afterAll deletes them again (allowed only for this game, see
- * the "Tests can delete their own rows" policy in supabase/schema.sql).
+ * leaderboard. afterAll deletes them again (allowed only for test accounts and
+ * this game, see the "Test accounts can delete test rows" policy in supabase/schema.sql).
  */
 const TEST_GAME = 'e2e-test';
 
-const { VITE_SUPABASE_URL: url, VITE_SUPABASE_PUBLISHABLE_KEY: key } = loadEnv('development', process.cwd(), 'VITE_');
-test.skip(!url || !key, 'Needs VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in .env');
+const env = loadEnv('development', process.cwd(), ''); // '' = all variables, not only VITE_*
+const url = env.VITE_SUPABASE_URL;
+const key = env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const configured = Boolean(url && key && env.TEST_USERNAME && env.TEST_PASSWORD);
+test.skip(!configured, 'Needs VITE_SUPABASE_* and TEST_USERNAME / TEST_PASSWORD in .env');
 
-const leaderboard = createLeaderboard({ url, key });
-// Raw client for what the app never does: invalid rows, updates, deletes.
-const db = url && key ? createClient(url, key, { auth: { persistSession: false } }) : null;
+// Raw client, logged in as the test account in beforeAll. The leaderboard uses
+// it too, like the site shares the login client (see scores.js).
+const db = configured ? createClient(url, key, { auth: { persistSession: false } }) : null;
+const leaderboard = configured ? createLeaderboard({ client: db }) : null;
+// Not logged in: what any visitor with the public key can do.
+const visitor = configured ? createClient(url, key, { auth: { persistSession: false } }) : null;
+
+test.beforeAll(async () => {
+  if (!db) return;
+  const { error } = await db.auth.signInWithPassword({
+    email: usernameToEmail(env.TEST_USERNAME),
+    password: env.TEST_PASSWORD,
+  });
+  expect(error, 'test account login failed - see the setup guide in README.md').toBeNull();
+});
 
 // Unique per run, so we know which row is ours (12 of the 20 allowed characters).
 const nickname = `E2E-${Date.now().toString(36)}`;
@@ -62,7 +80,7 @@ test('the database rejects invalid rows that skip the app check', async () => {
   expect(await testRows()).not.toContainEqual(expect.objectContaining({ score: -1 }));
 });
 
-test('the public key cannot change a saved score', async () => {
+test('a saved score cannot be changed, not even by a logged-in account', async () => {
   await leaderboard.submitScore({ game: TEST_GAME, nickname, score: 10 });
 
   // There is no update permission. Whether the server answers with an error or
@@ -70,4 +88,17 @@ test('the public key cannot change a saved score', async () => {
   await db.from('scores').update({ score: 123456 }).eq('game', TEST_GAME).eq('nickname', nickname);
 
   expect(await testRows()).not.toContainEqual(expect.objectContaining({ score: 123456 }));
+});
+
+test('visitors who are not logged in cannot save a score', async () => {
+  const { error } = await visitor.from('scores').insert({ game: TEST_GAME, nickname, score: 777 });
+  expect(error).not.toBeNull();
+  expect(await testRows()).not.toContainEqual(expect.objectContaining({ score: 777 }));
+});
+
+test('visitors who are not logged in cannot delete test rows', async () => {
+  await leaderboard.submitScore({ game: TEST_GAME, nickname, score: 31 });
+  // Refused outright or 0 rows deleted; either way the row must still be there.
+  await visitor.from('scores').delete().eq('game', TEST_GAME);
+  expect(await testRows()).toContainEqual(expect.objectContaining({ nickname, score: 31 }));
 });

@@ -34,14 +34,19 @@ export function validateScore({ game, nickname, score }) {
  * Returns null when the URL or key is missing, so the page can simply hide the
  * leaderboard. `fetch` is optional: tests pass a fake one so they never talk to
  * the real database.
+ *
+ * Pass `client` (the one from createAuth) instead of url/key to read and write
+ * as the logged-in player: only logged-in players may save scores.
  */
-export function createLeaderboard({ url, key, fetch } = {}) {
-  if (!url || !key) return null;
+export function createLeaderboard({ url, key, fetch, client } = {}) {
+  if (!client && (!url || !key)) return null;
 
-  const supabase = createClient(url, key, {
-    auth: { persistSession: false }, // no logins yet, so there is no session to remember
-    ...(fetch && { global: { fetch } }),
-  });
+  const supabase =
+    client ??
+    createClient(url, key, {
+      auth: { persistSession: false }, // without a shared client there is no login to remember
+      ...(fetch && { global: { fetch } }),
+    });
 
   return {
     /** Best scores for one game, highest first. Ties: the earlier score wins. */

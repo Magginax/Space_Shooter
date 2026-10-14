@@ -1,4 +1,5 @@
 import { createLeaderboard } from './leaderboard.js';
+import { auth } from './account.js';
 
 /**
  * The one place the site talks to the leaderboard. Games only need:
@@ -6,13 +7,12 @@ import { createLeaderboard } from './leaderboard.js';
  *   import { saveScore } from '../../services/scores.js';
  *   await saveScore('ACE', 1200);
  *
+ * It uses the same Supabase client as the login (account.js), so scores are
+ * saved as the logged-in player. Guests cannot save: the database refuses.
  * URL and key come from .env. Vite copies VITE_* variables into the code at
  * build time, so they must be set before `npm run build`.
  */
-const leaderboard = createLeaderboard({
-  url: import.meta.env.VITE_SUPABASE_URL,
-  key: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-});
+const leaderboard = createLeaderboard({ client: auth?.client });
 
 export const DEFAULT_GAME = 'dodge';
 

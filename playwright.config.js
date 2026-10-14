@@ -32,5 +32,12 @@ export default defineConfig({
     url: 'http://localhost:4173',
     reuseExistingServer: !isCI,
     timeout: 120_000,
+    // A fake Supabase address baked into the test build: pages behave as
+    // "configured" and the tests answer its requests with page.route(), so the
+    // real database is never reached, even when .env exists (these win over .env).
+    env: {
+      VITE_SUPABASE_URL: 'https://supabase.test',
+      VITE_SUPABASE_PUBLISHABLE_KEY: 'test-key',
+    },
   },
 });

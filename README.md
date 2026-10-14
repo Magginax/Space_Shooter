@@ -17,7 +17,7 @@ npm run dev              # http://localhost:5173
 | `npm run build` | Production build into `dist/` |
 | `npm run preview` | Serve `dist/` on http://localhost:4173 |
 | `npm test` | Build + run Playwright tests (Chromium, Firefox, WebKit) |
-| `npm run test:db` | Tests against the real Supabase from `.env` (writes and deletes `e2e-test` rows) |
+| `npm run test:db` | Tests against the real Supabase from `.env` (writes and deletes `e2e-test` rows, checks account rules) |
 | `npm run test:ui` | Playwright interactive UI mode |
 | `npm run test:report` | Open the last HTML test report |
 
@@ -26,14 +26,18 @@ npm run dev              # http://localhost:5173
 ```
 .
 ├── index.html                 # Page entry (Vite injects the built JS/CSS)
-├── leaderboard.html           # High-score page (listed in vite.config.js)
+├── views/
+│   ├── leaderboard.html       # High-score page (listed in vite.config.js)
+│   └── login.html             # Login / registration on a handheld-LCD screen
 ├── public/                    # Static files copied as-is (images, sounds, favicon)
 ├── src/
 │   ├── main.js                # Wires the page to the game
 │   ├── leaderboard.js         # Loads and shows the high scores
-│   ├── styles/                # main.css, leaderboard.css
+│   ├── login.js               # Login form <-> auth service <-> LCD scene
+│   ├── styles/                # main.css, leaderboard.css, login.css
 │   ├── effects/
-│   │   └── SpaceBackground.js # Starfield + ship behind the leaderboard
+│   │   ├── SpaceBackground.js # Starfield + ship behind the leaderboard
+│   │   └── LcdScene.js        # Phone-LCD shoot 'em up behind the login form
 │   ├── engine/                # Reusable game engine
 │   │   ├── GameLoop.js        # Fixed-timestep update + render loop
 │   │   ├── Input.js           # Keyboard state
@@ -42,7 +46,9 @@ npm run dev              # http://localhost:5173
 │   │   └── dodge/DodgeGame.js # Example game built on the engine
 │   └── services/
 │       ├── leaderboard.js     # Supabase client + input checks
-│       └── scores.js          # saveScore() / loadTopScores(), configured from .env
+│       ├── scores.js          # saveScore() / loadTopScores(), configured from .env
+│       ├── auth.js            # Accounts: sign up / in / out, roles, input checks
+│       └── account.js         # The site's auth instance, configured from .env
 ├── supabase/schema.sql        # Database table + access rules (run in Supabase)
 ├── tests/e2e/                 # Playwright browser tests
 ├── tests/unit/                # Playwright tests for plain JS modules (no browser)
@@ -74,6 +80,40 @@ npm run dev              # http://localhost:5173
 
    It rejects with a readable error if the nickname (1-20 characters) or
    score (whole number, 0 or more) is invalid, or the server refuses it.
+
+## Accounts (login)
+
+Players log in on `views/login.html` with a **username and password only**.
+Passwords are kept by Supabase Auth as bcrypt hashes; our `profiles` table
+holds only the username and the role (`admin`, `user`, `test`). The database
+rules (RLS) decide what each role may do, see `supabase/schema.sql`.
+
+One-time setup in the Supabase dashboard:
+
+1. **SQL Editor**: run the blocks added on 2026-10-14 and 2026-10-15 from
+   `supabase/schema.sql`, in order (or the whole file on a new project).
+2. **Authentication → Sign In / Providers → Email**: turn **off**
+   "Confirm email" (logins use `<username>@players.space-shooter.local`,
+   an address that never receives mail). Set the minimum password length to 8.
+3. Register on the login page, then make yourself admin in the SQL Editor:
+   `update public.profiles set role = 'admin' where username = 'your_name';`
+4. Test account for `npm run test:db`: register `e2e_tester` on the login page,
+   run `update public.profiles set role = 'test' where username = 'e2e_tester';`
+   and put `TEST_USERNAME` / `TEST_PASSWORD` into `.env` (see `.env.example`).
+
+There is no "forgot password" (no real e-mail): an admin resets it in
+**Authentication → Users**. Logged-in players change their password under
+**PROFILE** on the login page.
+
+The game only starts for logged-in players or guests (**PLAY AS GUEST**).
+Guests can play, but only logged-in players may save scores: that rule is in
+the database, because the check in the browser can be bypassed. A direct link
+to `#game` sends visitors to the login page and back to the game afterwards.
+
+```js
+import { auth } from '../services/account.js';
+const player = await auth.getCurrentPlayer(); // { id, username, role } or null
+```
 
 ## GitHub Pages
 

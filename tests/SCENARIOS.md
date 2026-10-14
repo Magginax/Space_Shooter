@@ -11,9 +11,9 @@ Status: `[ ]` = not written yet, `[x]` = done.
 - **E2E tests** (`tests/e2e/`): fake the server with
   `page.route('**/rest/v1/scores**', route => route.fulfill({ json: [...] }))`.
 - The client is only created when `VITE_SUPABASE_URL` and
-  `VITE_SUPABASE_PUBLISHABLE_KEY` are set at build time. Give the test build
-  fake values in `webServer.env` in `playwright.config.js`
-  (e.g. `https://example.supabase.co`). Environment variables override `.env`,
+  `VITE_SUPABASE_PUBLISHABLE_KEY` are set at build time. The test build gets
+  the fake `https://supabase.test` from `webServer.env` in
+  `playwright.config.js` (done). Environment variables override `.env`,
   so tests never reach the real database.
 - The "offline" scenarios need a build **without** these variables
   (a separate build or project).
@@ -42,7 +42,7 @@ by moving the "configured?" logic into a function that takes the env object.
 - [ ] Without configuration both functions reject with
       "Leaderboard is not configured...".
 
-## E2E: leaderboard page (`leaderboard.html`)
+## E2E: leaderboard page (`views/leaderboard.html`)
 
 State is in `data-state` on `[data-testid="leaderboard"]`:
 `loading` | `ready` | `empty` | `error` | `offline`.
@@ -56,7 +56,6 @@ State is in `data-state` on `[data-testid="leaderboard"]`:
 - [ ] Server error (HTTP 500): state `error`, text "CONNECTION LOST", RETRY visible.
 - [ ] RETRY after the server recovers: state `ready`, RETRY hidden.
 - [ ] Nickname `<img src=x onerror=alert(1)>` is shown as text; no `<img>` in the table.
-- [ ] Long nickname (20 chars) wraps and does not cause horizontal scroll at 375 px width.
 - [ ] Without configuration: state `offline`, text "LEADERBOARD OFFLINE", no request sent.
 
 ## E2E: background (`src/effects/SpaceBackground.js`)
@@ -71,7 +70,7 @@ Decoration only, so check behaviour, not pixels.
 
 ## E2E: navigation
 
-- [ ] Home page nav link "Leaderboard" opens `leaderboard.html`.
+- [ ] Home page nav link "Leaderboard" opens `views/leaderboard.html`.
 - [ ] "< BACK" returns to the home page.
 - [ ] Under a sub-path (`BASE_PATH=/<repo>/` build) all links and assets load.
 
@@ -88,7 +87,26 @@ Rows use game `'e2e-test'` and are deleted in `afterAll`.
 - [ ] The publishable key cannot delete a Dodge score. Needs a safe way to
       check it without risking real rows, e.g. a separate test project.
 
+## Accounts
+
+Unit (`tests/unit/auth.spec.js`), E2E (`tests/e2e/login.spec.js`) and
+database (`tests/db/auth-db.spec.js`, needs the test account in `.env`).
+
+- [x] Username is trimmed + lower-cased; bad usernames and short passwords are rejected without a request.
+- [x] Login / sign-up send `<username>@players.space-shooter.local`; the role is never sent.
+- [x] Supabase errors become readable messages (wrong password, taken username, "Confirm email" on).
+- [x] `setRole` fails when the database changes nothing; unknown roles are refused.
+- [x] Login page: success shows pilot + rank, wrong password costs a heart, 3 = GAME OVER, hearts refill.
+- [x] Login survives a reload; LOGOUT shows the form again.
+- [x] Reduced motion = static LCD; no page errors.
+- [x] DB: test account has role `test`, sees only itself, cannot become admin or rename itself.
+- [x] DB: visitors without login cannot read profiles.
+- [ ] DB: an admin can list everyone and change roles (needs an admin test account).
+- [ ] Session expired / refresh token invalid: page shows the form again.
+
 ## Live check (manual, before a release)
+
+- [ ] Registering on the live site works (Supabase accepts the `.local` login address).
 
 - [ ] Built with the real `.env`, the page loads scores from Supabase (state `ready` or `empty`).
 - [ ] `saveScore()` from the game makes the new score appear on the leaderboard.

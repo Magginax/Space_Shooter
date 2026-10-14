@@ -1,7 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { fakeSupabase } from './support/fake-supabase.js';
 
 test.describe('Dodge game', () => {
+  // The game only runs for players, so every test starts logged in.
   test.beforeEach(async ({ page }) => {
+    const fake = await fakeSupabase(page);
+    await fake.loginBeforeLoad();
     await page.goto('/');
   });
 

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+    <title>Login - Space_Shooter</title>
+  </head>
+  <body class="handheld">
+    <main class="desk">
+      <a class="back-link" href="../">&lt; BACK</a>
+
+      <!-- The handheld console. Only the form inside the screen is interactive;
+           the rest (LED, speaker, buttons) is decoration. -->
+      <div class="device">
+        <div class="device-top" aria-hidden="true">
+          <span class="led"></span>
+          <span class="brand">SPACE<b>_</b>SHOOTER</span>
+          <span class="model">LCD-01 · DOT MATRIX</span>
+        </div>
+
+        <div class="bezel">
+          <div class="screen" data-testid="screen">
+            <div class="lcd">
+              <canvas data-testid="lcd-canvas" aria-hidden="true"></canvas>
+            </div>
+            <p class="banner" data-testid="banner" aria-hidden="true" hidden></p>
+
+            <section class="panel" data-testid="login" data-state="idle" aria-labelledby="login-title">
+              <h1 id="login-title" class="panel-title">INSERT COIN</h1>
+
+              <div class="modes" data-testid="modes">
+                <button type="button" class="mode" data-mode="login" aria-pressed="true">LOGIN</button>
+                <button type="button" class="mode" data-mode="register" aria-pressed="false">NEW PILOT</button>
+              </div>
+
+              <!-- novalidate: our own checks show arcade-style messages instead of the browser bubbles.
+                   method="post" + buttons disabled until login.js runs: if the form were sent
+                   before the script loaded, the password must never end up in the address bar. -->
+              <form class="login-form" data-testid="login-form" method="post" novalidate>
+                <label for="username">PILOT ID</label>
+                <input
+                  id="username"
+                  name="username"
+                  autocomplete="username"
+                  autocapitalize="none"
+                  spellcheck="false"
+                  maxlength="16"
+                  required
+                />
+                <label for="password">PASSCODE</label>
+                <input id="password" name="password" type="password" autocomplete="current-password" required />
+                <p class="hint" data-testid="login-hint">3-16 LETTERS, NUMBERS OR _</p>
+                <button type="submit" class="start" data-testid="submit-button" disabled>PRESS START</button>
+                <p class="or" aria-hidden="true">- OR -</p>
+                <button type="button" class="start ghost" data-testid="guest-button">PLAY AS GUEST</button>
+              </form>
+
+              <div class="player" data-testid="player-card" hidden>
+                <p>PILOT <strong data-testid="player-name"></strong></p>
+                <p>RANK <strong data-testid="player-role"></strong></p>
+                <div class="player-actions">
+                  <a class="start" data-testid="play-link" href="../#game">PLAY</a>
+                  <button type="button" class="start" data-testid="profile-button">PROFILE</button>
+                  <button type="button" class="start" data-testid="logout-button">LOGOUT</button>
+                </div>
+              </div>
+
+              <!-- Profile management: two small forms, each with its own button. -->
+              <div class="profile" data-testid="profile" hidden>
+                <form class="login-form" data-testid="rename-form" method="post" novalidate>
+                  <label for="new-username">NEW PILOT ID</label>
+                  <input
+                    id="new-username"
+                    name="new-username"
+                    autocomplete="username"
+                    autocapitalize="none"
+                    spellcheck="false"
+                    maxlength="16"
+                    required
+                  />
+                  <button type="submit" class="start" disabled>RENAME</button>
+                </form>
+                <form class="login-form" data-testid="password-form" method="post" novalidate>
+                  <label for="current-password">CURRENT PASSCODE</label>
+                  <input id="current-password" name="current-password" type="password" autocomplete="current-password" required />
+                  <label for="new-password">NEW PASSCODE</label>
+                  <input id="new-password" name="new-password" type="password" autocomplete="new-password" required />
+                  <button type="submit" class="start" disabled>CHANGE PASSCODE</button>
+                </form>
+                <button type="button" class="start ghost" data-testid="profile-back">&lt; BACK</button>
+              </div>
+
+              <p class="status" data-testid="login-status" role="status" hidden></p>
+            </section>
+
+            <div class="glare" aria-hidden="true"></div>
+          </div>
+        </div>
+
+        <div class="controls" aria-hidden="true">
+          <div class="dpad"><span></span></div>
+          <div class="speaker"></div>
+          <div class="ab">
+            <button type="button" tabindex="-1" data-fire>B</button>
+            <button type="button" tabindex="-1" data-fire>A</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <script type="module" src="/src/login.js"></script>
+  </body>
+</html>

@@ -13,6 +13,6 @@ test.describe('Home page', () => {
   test('nav link scrolls to the game section', async ({ page }) => {
     await page.getByRole('link', { name: 'Game' }).click();
     await expect(page).toHaveURL(/#game$/);
-    await expect(page.getByTestId('game-canvas')).toBeInViewport();
+    await expect(page.getByTestId('game-section')).toBeInViewport();
   });
 });

@@ -1,0 +1,430 @@
+/* Handheld-console look: a graphite device with a green phone-style LCD.
+   Everything inside the screen uses only two colours, LCD and ink, like the real thing. */
+:root {
+  --room: #0b0c10;
+  --shell-light: #383c4a;
+  --shell-dark: #1d2028;
+  --bezel: #121318;
+  --lcd: #a6d85c;
+  --lcd-light: #bdea74;
+  --lcd-dark: #86b843;
+  --ink: #13280b;
+  --ink-ghost: rgb(19 40 11 / 0.25);
+  --led: #ff3b3b;
+  --button: #c0245e;
+  --font: 'Press Start 2P', ui-monospace, monospace;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+/* `hidden` must win over the display: grid/flex rules below. */
+[hidden] { display: none !important; }
+
+body.handheld {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse at 50% 0%, #262833 0%, var(--room) 70%);
+  color: #cfd3df;
+  font-family: var(--font);
+  line-height: 1.6;
+}
+
+.desk {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 20px;
+  color: var(--lcd);
+  font-size: 0.7rem;
+  text-decoration: none;
+}
+.back-link:hover,
+.back-link:focus-visible { color: #fff; }
+.back-link:focus-visible {
+  outline: 3px solid var(--lcd);
+  outline-offset: 4px;
+}
+
+/* ---------- The device ---------- */
+
+.device {
+  position: relative;
+  padding: 18px 22px 26px;
+  border-radius: 24px 24px 24px 72px;
+  background: linear-gradient(160deg, var(--shell-light), var(--shell-dark) 70%);
+  box-shadow:
+    inset 0 2px 0 rgb(255 255 255 / 0.1),  /* light catching the top edge */
+    inset 0 -5px 0 rgb(0 0 0 / 0.35),
+    0 30px 60px rgb(0 0 0 / 0.6);
+}
+
+/* Four screws in the corners. */
+.device::before,
+.device::after {
+  content: '';
+  position: absolute;
+  top: 10px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #6b7080, #15171d 70%);
+}
+.device::before { left: 12px; }
+.device::after { right: 12px; }
+
+.device-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 8px 12px;
+  font-size: 0.55rem;
+}
+
+.led {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--led);
+  box-shadow: 0 0 6px var(--led), 0 0 14px rgb(255 59 59 / 0.6);
+  animation: led 3s ease-in-out infinite;
+}
+@keyframes led {
+  50% { opacity: 0.65; }
+}
+
+.brand {
+  letter-spacing: 0.08em;
+  font-style: italic;
+}
+.brand b { color: var(--button); }
+
+.model {
+  margin-left: auto;
+  color: #7d8296;
+  font-size: 0.45rem;
+  letter-spacing: 0.15em;
+}
+
+.bezel {
+  padding: 12px;
+  border-radius: 10px 10px 10px 36px;
+  background: var(--bezel);
+  box-shadow: inset 0 3px 8px rgb(0 0 0 / 0.8), 0 1px 0 rgb(255 255 255 / 0.06);
+}
+
+/* ---------- The LCD ---------- */
+
+.screen {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9; /* wide and not too tall, so the console fits on screen */
+  overflow: hidden;
+  border-radius: 4px;
+  /* Uneven backlight: brighter in the middle, darker at the edges. */
+  background: radial-gradient(ellipse at 45% 40%, var(--lcd-light), var(--lcd) 55%, var(--lcd-dark));
+  color: var(--ink);
+}
+
+/* Sized by LcdScene.js to a whole number of LCD pixels, centred in the screen. */
+.lcd {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+}
+.lcd canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+/* Thin light lines between the LCD pixels. --px (one LCD pixel in CSS pixels)
+   is set by LcdScene.js, so the grid matches the canvas pixels exactly. */
+.lcd::after,
+.panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgb(220 255 160 / 0.22) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(220 255 160 / 0.22) 1px, transparent 1px);
+  background-size: var(--px, 4px) var(--px, 4px);
+}
+
+/* Reflection on the glass + shadow where the screen meets the bezel. */
+.glare {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  background: linear-gradient(115deg, rgb(255 255 255 / 0.2) 0%, rgb(255 255 255 / 0.04) 30%, transparent 45%);
+  box-shadow: inset 0 0 22px rgb(0 0 0 / 0.35);
+}
+
+.screen.shake { animation: shake 0.4s steps(5); }
+@keyframes shake {
+  20% { transform: translate(-4px, 2px); }
+  40% { transform: translate(4px, -2px); }
+  60% { transform: translate(-3px, -1px); }
+  80% { transform: translate(2px, 1px); }
+}
+
+.banner {
+  position: absolute;
+  top: 16%;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  margin: 0;
+  text-align: center;
+  padding: 8px 0;
+  background: var(--ink);
+  color: var(--lcd);
+  font-size: clamp(1rem, 5vw, 1.8rem);
+  box-shadow: 0 6px 0 var(--ink-ghost);
+  animation: blink 0.5s steps(1) infinite;
+}
+
+/* ---------- The login window inside the LCD ---------- */
+
+.panel {
+  position: relative;
+  z-index: 1;
+  width: min(300px, 78%);
+  padding: 14px 14px 12px;
+  background: var(--lcd);
+  /* Double frame, like a dialog box on an old phone. */
+  border: 3px solid var(--ink);
+  box-shadow: 0 0 0 3px var(--lcd), 0 0 0 6px var(--ink), 6px 6px 0 6px var(--ink-ghost);
+  font-size: 0.6rem;
+  text-align: center;
+}
+
+.panel-title {
+  margin: 0 0 10px;
+  font-size: 0.8rem;
+  font-weight: normal;
+  animation: blink 1.2s steps(1) infinite;
+}
+.panel[data-state='signed-in'] .panel-title { animation: none; }
+
+.modes {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.mode {
+  flex: 1;
+  padding: 6px 4px;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.5rem;
+  cursor: pointer;
+}
+.mode[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--lcd);
+}
+
+.login-form {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+}
+.login-form label {
+  margin-top: 4px;
+  font-size: 0.5rem;
+}
+.login-form input {
+  width: 100%;
+  padding: 6px 4px;
+  border: 0;
+  border-bottom: 2px dashed var(--ink);
+  border-radius: 0;
+  background: rgb(19 40 11 / 0.07);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.65rem;
+  caret-color: var(--ink);
+  outline: none;
+}
+/* The focused field is inverted, like a selected menu item on a phone. */
+.login-form input:focus {
+  background: var(--ink);
+  color: var(--lcd);
+  caret-color: var(--lcd);
+}
+
+.hint {
+  margin: 4px 0 8px;
+  font-size: 0.45rem;
+  opacity: 0.7;
+}
+
+.start {
+  display: inline-block;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 0;
+  background: var(--ink);
+  color: var(--lcd);
+  font: inherit;
+  font-size: 0.6rem;
+  text-align: center;
+  text-decoration: none;
+  /* The "shadow" is a ghost of the button, like LCD pixels that are slow to turn off. */
+  box-shadow: 3px 3px 0 var(--ink-ghost);
+  cursor: pointer;
+}
+.start:active {
+  transform: translate(3px, 3px);
+  box-shadow: none;
+}
+.start:disabled { opacity: 0.6; cursor: wait; }
+
+/* Secondary button: outlined instead of filled. */
+.start.ghost {
+  border: 2px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
+}
+
+.or {
+  margin: 2px 0;
+  font-size: 0.45rem;
+  text-align: center;
+  opacity: 0.7;
+}
+
+.profile {
+  display: grid;
+  gap: 12px;
+}
+.profile .start { width: 100%; margin-top: 4px; }
+.profile .login-form + .login-form {
+  padding-top: 10px;
+  border-top: 2px dotted var(--ink);
+}
+
+.mode:focus-visible,
+.start:focus-visible {
+  outline: 2px dashed var(--ink);
+  outline-offset: 3px;
+}
+
+.player p { margin: 0 0 10px; }
+.player strong {
+  padding: 2px 6px;
+  background: var(--ink);
+  color: var(--lcd);
+  font-weight: normal;
+  overflow-wrap: anywhere;
+}
+.player-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.status {
+  margin: 12px 0 0;
+  font-size: 0.5rem;
+  text-transform: uppercase;
+}
+.panel[data-state='loading'] .status { animation: blink 0.6s steps(1) infinite; }
+.panel[data-state='error'] .status,
+.panel[data-state='offline'] .status {
+  padding: 6px;
+  background: var(--ink);
+  color: var(--lcd);
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* ---------- Buttons under the screen (decoration; A/B fire) ---------- */
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 14px 0;
+}
+
+.dpad {
+  position: relative;
+  width: 84px;
+  height: 84px;
+}
+.dpad::before,
+.dpad::after {
+  content: '';
+  position: absolute;
+  inset: 30px 0;
+  border-radius: 4px;
+  background: #121318;
+  box-shadow: 0 3px 0 #07080a;
+}
+.dpad::after { inset: 0 30px; }
+.dpad span {
+  position: absolute;
+  inset: 36px;
+  z-index: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, #23252d, #121318);
+}
+
+/* Speaker: slanted slots. */
+.speaker {
+  width: 64px;
+  height: 36px;
+  border-radius: 8px;
+  background: repeating-linear-gradient(90deg, #111216 0 4px, transparent 4px 10px);
+  transform: rotate(-25deg);
+  opacity: 0.9;
+}
+
+.ab {
+  display: flex;
+  gap: 14px;
+  transform: rotate(-25deg);
+}
+.ab button {
+  width: 46px;
+  height: 46px;
+  border: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #e0457f, var(--button) 55%, #7d1239);
+  color: rgb(255 255 255 / 0.55);
+  font: inherit;
+  font-size: 0.6rem;
+  box-shadow: 0 4px 0 #4d0a23, 0 6px 10px rgb(0 0 0 / 0.5);
+  cursor: pointer;
+}
+.ab button:first-child { margin-top: 18px; }
+.ab button:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #4d0a23;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .led,
+  .banner,
+  .panel-title,
+  .panel[data-state='loading'] .status,
+  .screen.shake { animation: none; }
+}

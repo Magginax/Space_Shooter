@@ -12,7 +12,8 @@
       <nav>
         <a href="#about">About</a>
         <a href="#game">Game</a>
-        <a href="./leaderboard.html">Leaderboard</a>
+        <a href="./views/leaderboard.html">Leaderboard</a>
+        <a href="./views/login.html">Login</a>
       </nav>
     </header>
 
@@ -22,14 +23,28 @@
         <p>A static site template with a small canvas game engine.</p>
       </section>
 
-      <section id="game">
+      <!-- data-access: "checking" -> "granted" (logged in or guest) or "locked". -->
+      <section id="game" data-testid="game-section" data-access="checking">
         <h2>Dodge</h2>
-        <p>Use <kbd>&larr;</kbd> <kbd>&rarr;</kbd> (or A / D) to avoid the falling blocks.</p>
-        <div class="game-hud">
-          <span>Score: <strong data-testid="score">0</strong></span>
-          <button type="button" data-testid="start-button">Start</button>
+
+        <div class="game-lock" data-testid="game-lock" hidden>
+          <p data-testid="game-lock-message">Log in to play.</p>
+          <a class="button" data-testid="login-to-play" href="./views/login.html">Log in</a>
         </div>
-        <canvas id="game-canvas" width="480" height="320" data-testid="game-canvas" data-state="idle"></canvas>
+
+        <div data-testid="game-area" hidden>
+          <p class="player-bar" data-testid="player-bar">
+            Playing as <strong data-testid="player-name"></strong>
+            <span data-testid="guest-note" hidden>(guest: scores are not saved)</span>
+            <a data-testid="account-link" href="./views/login.html">Account</a>
+          </p>
+          <p>Use <kbd>&larr;</kbd> <kbd>&rarr;</kbd> (or A / D) to avoid the falling blocks.</p>
+          <div class="game-hud">
+            <span>Score: <strong data-testid="score">0</strong></span>
+            <button type="button" data-testid="start-button">Start</button>
+          </div>
+          <canvas id="game-canvas" width="480" height="320" data-testid="game-canvas" data-state="idle"></canvas>
+        </div>
       </section>
     </main>
 

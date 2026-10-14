@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { createClient } from '@supabase/supabase-js';
 import { createLeaderboard } from '../../src/services/leaderboard.js';
 
 const config = { url: 'https://test.supabase.co', key: 'test-key' };
@@ -25,6 +26,15 @@ test.describe('leaderboard service', () => {
     expect(createLeaderboard({})).toBeNull();
     expect(createLeaderboard({ url: config.url })).toBeNull();
     expect(createLeaderboard({ key: config.key })).toBeNull();
+  });
+
+  test('uses a shared client instead of URL and key', async () => {
+    const { fetch, requests } = fakeFetch({ body: '[]' });
+    const client = createClient(config.url, config.key, { auth: { persistSession: false }, global: { fetch } });
+    const leaderboard = createLeaderboard({ client });
+
+    await leaderboard.getTopScores('dodge');
+    expect(requests[0].url.origin).toBe(config.url);
   });
 
   test('getTopScores asks for one game, sorted by score, limited', async () => {

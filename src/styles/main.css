@@ -66,3 +66,28 @@ canvas {
   height: auto;
   border-radius: 8px;
 }
+
+/* Shown instead of the game until the visitor logs in or chooses guest mode. */
+.game-lock {
+  padding: 2rem 1rem;
+  border: 2px dashed color-mix(in srgb, var(--fg) 30%, transparent);
+  border-radius: 8px;
+  text-align: center;
+}
+
+a.button {
+  display: inline-block;
+  padding: 0.4rem 1rem;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  text-decoration: none;
+}
+
+.player-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+.player-bar a { margin-left: auto; }
