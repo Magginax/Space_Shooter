@@ -101,6 +101,8 @@ database (`tests/db/auth-db.spec.js`, needs the test account in `.env`).
 - [x] Reduced motion = static LCD; no page errors.
 - [x] DB: test account has role `test`, sees only itself, cannot become admin or change its username directly.
 - [x] DB: visitors without login cannot read profiles.
+- [x] Display name: login with the new name works, the old one fails, the username stays (unit, e2e, DB).
+- [x] Display name taken by another player is refused for rename and sign-up; visitors cannot rename.
 - [ ] DB: an admin can list everyone and change roles (needs an admin test account).
 - [ ] Session expired / refresh token invalid: page shows the form again.
 
@@ -117,6 +119,4 @@ database (`tests/db/auth-db.spec.js`, needs the test account in `.env`).
 
 - Dodge game tests: the game was removed; Space Shooter gets its own tests
   once it has game logic (`src/games/space-shooter/`).
-- Rename tests (unit, e2e, DB): renaming will change (separate nickname or a
-  real rename), so its tests come back with the final version.
 - [ ] Space Shooter: game over of a logged-in player saves the score; a guest's does not.

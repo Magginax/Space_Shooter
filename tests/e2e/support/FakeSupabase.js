@@ -24,7 +24,10 @@ function sessionFor(username) {
 
 /**
  * Stands in for the Supabase server, so browser tests never touch a real
- * database: one account whose name and password can change, like the real one.
+ * database. It keeps a small list of accounts ("ace_pilot" exists from the
+ * start) and answers like the real server and database functions would:
+ * accounts are filed under their original username, players log in with
+ * their display name, and both the display name and the password can change.
  * Set up by the `supabase` fixture (fixtures.js) for every e2e test.
  *
  * Settings (withRole, ...) can be changed before or after the page opens:
@@ -35,9 +38,9 @@ export class FakeSupabase {
     this.page = page;
     this.requests = [];
     this.role = 'user';
-    this.takenUsername = null;
     this.profileStatus = 200;
-    this.account = { username: null, password: PASSWORD };
+    this.accounts = [{ username: 'ace_pilot', displayName: 'ace_pilot', password: PASSWORD }];
+    this.current = null; // the account that is logged in
   }
 
   async install() {
@@ -51,9 +54,9 @@ export class FakeSupabase {
     this.role = role;
   }
 
-  /** Someone already has this username: sign-up and rename are refused. */
-  withTakenUsername(username) {
-    this.takenUsername = username;
+  /** Another player logs in with this name: sign-up and rename to it are refused. */
+  withTakenUsername(name) {
+    this.accounts.push({ username: 'someone_else', displayName: name, password: 'other-password' });
   }
 
   /** The database refuses the login token, like for a made-up one. */
@@ -63,7 +66,7 @@ export class FakeSupabase {
 
   /** Starts the page already logged in, as after a login on an earlier visit. */
   async loginBeforeLoad(username = 'ace_pilot') {
-    this.account.username = username;
+    this.current = this.accountNamed(username) ?? this.addAccount(username, PASSWORD);
     await this.page.addInitScript(
       ([key, session]) => window.localStorage.setItem(key, JSON.stringify(session)),
       [SESSION_KEY, sessionFor(username)],
@@ -100,46 +103,58 @@ export class FakeSupabase {
 
   // --- The fake server ----------------------------------------------------------
 
+  accountNamed(displayName) {
+    return this.accounts.find((account) => account.displayName === displayName);
+  }
+
+  addAccount(username, password) {
+    const account = { username, displayName: username, password };
+    this.accounts.push(account);
+    return account;
+  }
+
   async answer(route) {
     const request = route.request();
     const url = new URL(request.url());
     const body = request.postDataJSON();
-    const account = this.account;
     this.requests.push({ method: request.method(), path: url.pathname, body });
+    const usernameIn = (email) => email.split('@')[0];
 
+    // Database function: which account logs in with this name.
+    if (url.pathname === '/rest/v1/rpc/login_name_for') {
+      return route.fulfill({ json: this.accountNamed(body.name)?.username ?? null });
+    }
+    // Database function: change the display name of the logged-in player.
+    if (url.pathname === '/rest/v1/rpc/set_display_name') {
+      const taken = this.accounts.some((a) => a !== this.current && a.displayName === body.new_name);
+      if (taken) return route.fulfill({ status: 400, json: { code: 'P0001', message: 'That username is taken' } });
+      this.current.displayName = body.new_name;
+      return route.fulfill({ json: body.new_name });
+    }
     if (url.pathname === '/auth/v1/token') {
       if (url.searchParams.get('grant_type') === 'password') {
-        if (body.password !== account.password) {
+        const account = this.accounts.find((a) => a.username === usernameIn(body.email));
+        if (!account || body.password !== account.password) {
           return route.fulfill({ status: 400, json: { error_code: 'invalid_credentials', msg: 'Invalid login credentials' } });
         }
-        account.username = body.email.split('@')[0];
+        this.current = account;
       }
-      return route.fulfill({ json: sessionFor(account.username) });
+      return route.fulfill({ json: sessionFor(this.current.username) });
     }
     if (url.pathname === '/auth/v1/signup') {
-      const username = body.email.split('@')[0];
-      if (username === this.takenUsername) {
-        return route.fulfill({ status: 422, json: { error_code: 'user_already_exists', msg: 'User already registered' } });
-      }
-      account.username = username;
-      return route.fulfill({ json: sessionFor(username) });
+      this.current = this.addAccount(usernameIn(body.email), body.password);
+      return route.fulfill({ json: sessionFor(this.current.username) });
     }
     if (url.pathname === '/auth/v1/user' && request.method() === 'PUT') {
-      if (body.email) {
-        const username = body.email.split('@')[0];
-        if (username === this.takenUsername) {
-          return route.fulfill({ status: 422, json: { error_code: 'email_exists', msg: 'Email address already registered' } });
-        }
-        account.username = username; // what the database trigger does
-      }
-      if (body.password) account.password = body.password;
-      return route.fulfill({ json: sessionFor(account.username).user });
+      if (body.password) this.current.password = body.password;
+      return route.fulfill({ json: sessionFor(this.current.username).user });
     }
     if (url.pathname === '/rest/v1/profiles') {
       if (this.profileStatus !== 200) {
         return route.fulfill({ status: this.profileStatus, json: { message: 'JWT invalid' } });
       }
-      return route.fulfill({ json: { username: account.username, role: this.role } });
+      const { username, displayName } = this.current;
+      return route.fulfill({ json: { username, display_name: displayName, role: this.role } });
     }
     return route.fulfill({ status: 204 }); // e.g. /auth/v1/logout
   }

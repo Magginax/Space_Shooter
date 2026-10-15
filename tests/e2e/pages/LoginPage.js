@@ -31,9 +31,12 @@ export class LoginPage {
     this.profileButton = page.getByTestId('profile-button');
     this.logoutButton = page.getByTestId('logout-button');
 
+    this.newUsername = page.getByLabel('NEW PILOT ID');
+    this.renameButton = page.getByRole('button', { name: 'RENAME' });
     this.currentPassword = page.getByLabel('CURRENT PASSCODE');
     this.newPassword = page.getByLabel('NEW PASSCODE');
     this.changePasswordButton = page.getByRole('button', { name: 'CHANGE PASSCODE' });
+    this.profileBackButton = page.getByTestId('profile-back');
   }
 
   // --- Actions ------------------------------------------------------------------
@@ -100,6 +103,16 @@ export class LoginPage {
 
   async openProfile() {
     await this.profileButton.click();
+  }
+
+  async closeProfile() {
+    await this.profileBackButton.click();
+  }
+
+  /** Changes the name the player is shown with and logs in with. */
+  async rename(newName) {
+    await this.newUsername.fill(newName);
+    await this.renameButton.click();
   }
 
   async changePassword(currentPassword, newPassword) {

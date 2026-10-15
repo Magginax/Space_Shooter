@@ -85,7 +85,7 @@ function shakeScreen() {
 }
 
 function showPlayer(player, message = '') {
-  playerName.textContent = player.username;
+  playerName.textContent = player.displayName;
   playerRole.textContent = player.role.toUpperCase();
   showView('player');
   setState('signed-in', message);
@@ -198,10 +198,10 @@ renameForm.addEventListener('submit', (event) => {
   if (!newName) return;
 
   run(renameForm.querySelector('button'), 'RENAMING...', async () => {
-    const player = await auth.changeUsername(newName);
-    playerName.textContent = player.username;
+    const player = await auth.changeDisplayName(newName);
+    playerName.textContent = player.displayName;
     newUsernameInput.value = '';
-    setState('signed-in', `PILOT ID CHANGED TO ${player.username}`);
+    setState('signed-in', `PILOT ID CHANGED TO ${player.displayName}. LOG IN WITH IT FROM NOW ON`);
   });
 });
 

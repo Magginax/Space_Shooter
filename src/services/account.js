@@ -22,7 +22,7 @@ export const isAuthConfigured = auth !== null;
 // The choice is remembered in this browser until someone logs in or out.
 const GUEST_KEY = 'space_shooter.guest';
 
-export const GUEST = Object.freeze({ id: null, username: 'guest', role: 'guest', isGuest: true });
+export const GUEST = Object.freeze({ id: null, username: 'guest', displayName: 'guest', role: 'guest', isGuest: true });
 
 // localStorage can throw (e.g. blocked site data); then guest mode just does not stick.
 function storage(action) {

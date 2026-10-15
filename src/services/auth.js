@@ -72,8 +72,14 @@ function authError(action, error) {
  * `fetch` and `storage` are optional: tests pass fakes so they never talk to
  * the real database or need a browser.
  *
- * A player is { id, username, role }. What a player may do is decided by the
- * database rules, not here: e.g. setRole() simply fails for non-admins.
+ * A player is { id, username, displayName, role }:
+ * - username: the name they registered with; never changes (the account is
+ *   filed under it)
+ * - displayName: the name they are shown with AND log in with; starts equal
+ *   to username and can be changed in the profile (changeDisplayName)
+ *
+ * What a player may do is decided by the database rules, not here: e.g.
+ * setRole() simply fails for non-admins.
  */
 export function createAuth({ url, key, fetch, storage } = {}) {
   if (!url || !key) return null;
@@ -88,11 +94,18 @@ export function createAuth({ url, key, fetch, storage } = {}) {
   async function loadPlayer(userId) {
     const { data, error } = await supabase
       .from('profiles')
-      .select('username, role')
+      .select('username, display_name, role')
       .eq('id', userId)
       .single();
     if (error) throw new Error(`Could not load the profile: ${error.message}`);
-    return { id: userId, username: data.username, role: data.role };
+    return { id: userId, username: data.username, displayName: data.display_name, role: data.role };
+  }
+
+  /** The original username of the account with this login name, or null (database function). */
+  async function loginNameFor(name) {
+    const { data, error } = await supabase.rpc('login_name_for', { name });
+    if (error) throw new Error(`Could not look up the name: ${error.message}`);
+    return data;
   }
 
   async function requireSession() {
@@ -112,6 +125,8 @@ export function createAuth({ url, key, fetch, storage } = {}) {
     /** Creates an account (role 'user') and logs it in. */
     async signUp(credentials) {
       const { username, password } = validateCredentials(credentials);
+      // Someone may already log in with this name (their display name).
+      if (await loginNameFor(username)) throw authError('sign up', { code: 'user_already_exists' });
       const { data, error } = await supabase.auth.signUp({ email: usernameToEmail(username), password });
       if (error) throw authError('sign up', error);
       // No session = Supabase waits for an e-mail confirmation that can never arrive.
@@ -121,9 +136,14 @@ export function createAuth({ url, key, fetch, storage } = {}) {
       return loadPlayer(data.user.id);
     },
 
+    /** `username` is the login name, i.e. the player's current display name. */
     async signIn(credentials) {
       const { username, password } = validateCredentials(credentials);
-      const { data, error } = await supabase.auth.signInWithPassword({ email: usernameToEmail(username), password });
+      // Find the account first: it may be filed under an older name.
+      const accountName = await loginNameFor(username);
+      // Unknown name: the same answer as a wrong password, like most logins.
+      if (!accountName) throw authError('log in', { code: 'invalid_credentials' });
+      const { data, error } = await supabase.auth.signInWithPassword({ email: usernameToEmail(accountName), password });
       if (error) throw authError('log in', error);
       return loadPlayer(data.user.id);
     },
@@ -165,29 +185,23 @@ export function createAuth({ url, key, fetch, storage } = {}) {
     },
 
     /**
-     * The username is the login e-mail before "@", so renaming changes the
-     * e-mail; a database trigger copies the new name into profiles.
-     * Returns the player with the new name.
+     * Changes the name the player is shown with and logs in with. The account
+     * itself stays filed under the original username. Returns the player.
      */
-    async changeUsername(newUsername) {
-      const name = validateUsername(newUsername);
+    async changeDisplayName(newName) {
+      const name = validateUsername(newName);
       const session = await requireSession();
-      const { error } = await supabase.auth.updateUser({ email: usernameToEmail(name) });
-      if (error) throw authError('change the username', error);
-
-      const player = await loadPlayer(session.user.id);
-      // With "Confirm email" on, Supabase only waits for a confirmation mail.
-      if (player.username !== name) {
-        throw new Error('Username not changed: turn off "Confirm email" in Supabase (see supabase/schema.sql)');
-      }
-      return player;
+      const { error } = await supabase.rpc('set_display_name', { new_name: name });
+      // The database function already gives readable messages ("That username is taken").
+      if (error) throw new Error(error.message);
+      return loadPlayer(session.user.id);
     },
 
     /** Admins get every player; anyone else only themselves (database rule). */
     async listPlayers() {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, username, role, created_at')
+        .select('id, username, display_name, role, created_at')
         .order('username');
       if (error) throw new Error(`Could not load players: ${error.message}`);
       return data;

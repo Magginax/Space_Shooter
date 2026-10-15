@@ -87,6 +87,10 @@ npm run dev              # http://localhost:5173
 ## Accounts (login)
 
 Players log in on `views/login.html` with a **username and password only**.
+The account is filed under the username it was created with, which never
+changes; under **PROFILE** players can change their display name, and from
+then on they log in with the new name (`display_name` + the database
+functions `set_display_name` / `login_name_for`).
 Passwords are kept by Supabase Auth as bcrypt hashes; our `profiles` table
 holds only the username and the role (`admin`, `user`, `test`). The database
 rules (RLS) decide what each role may do, see `supabase/schema.sql`.

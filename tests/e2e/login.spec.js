@@ -150,6 +150,30 @@ test.describe('Login page: profile', () => {
     await loginPage.expectProfileOpen();
   });
 
+  test('after a rename the player logs in with the new name, not the old one', async ({ loginPage }) => {
+    await loginPage.rename('Top_Gun');
+    await loginPage.expectStatus('PILOT ID CHANGED TO top_gun. LOG IN WITH IT FROM NOW ON');
+    await loginPage.closeProfile();
+    await loginPage.expectSignedInAs('top_gun', 'USER');
+
+    await loginPage.logOut();
+    await loginPage.logIn('ace_pilot');
+    await loginPage.expectStatus('Wrong username or password');
+    await loginPage.logIn('top_gun');
+    await loginPage.expectSignedInAs('top_gun', 'USER');
+  });
+
+  test('rename to a name another player uses is refused', async ({ supabase, loginPage }) => {
+    supabase.withTakenUsername('maverick');
+    await loginPage.rename('maverick');
+    await loginPage.expectStatus('That username is taken');
+  });
+
+  test('rename to an invalid name is refused', async ({ loginPage }) => {
+    await loginPage.rename('x');
+    await loginPage.expectStatus(/Username must be 3-16 characters/);
+  });
+
   test('passcode change needs the current passcode', async ({ loginPage }) => {
     await loginPage.changePassword('wrong-guess', 'better-secret');
     await loginPage.expectStatus('Current password is wrong');

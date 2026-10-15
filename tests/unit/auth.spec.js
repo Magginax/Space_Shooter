@@ -49,9 +49,13 @@ function fakeServer(routes = {}) {
   return { fetch, requests };
 }
 
+// The database function that finds the account for a login name.
+const LOOKUP = 'POST /rest/v1/rpc/login_name_for';
+
 const loggedInRoutes = {
+  [LOOKUP]: { body: 'pilot_42' },
   'POST /auth/v1/token': { body: sessionBody() },
-  'GET /rest/v1/profiles': { body: { username: 'pilot_42', role: 'user' } },
+  'GET /rest/v1/profiles': { body: { username: 'pilot_42', display_name: 'pilot_42', role: 'user' } },
 };
 
 const newAuth = (fetch) => createAuth({ ...config, fetch, storage: memoryStorage() });
@@ -97,8 +101,12 @@ test.describe('auth service', () => {
     await expect(auth.signIn({ username: 'Pilot_42', password: 'secret123' })).resolves.toEqual({
       id: PLAYER_ID,
       username: 'pilot_42',
+      displayName: 'pilot_42',
       role: 'user',
     });
+
+    const lookup = requests.find((r) => r.url.pathname === '/rest/v1/rpc/login_name_for');
+    expect(lookup.body).toEqual({ name: 'pilot_42' });
 
     const login = requests.find((r) => r.url.pathname === '/auth/v1/token');
     expect(login.url.searchParams.get('grant_type')).toBe('password');
@@ -108,6 +116,32 @@ test.describe('auth service', () => {
     const profile = requests.find((r) => r.url.pathname === '/rest/v1/profiles');
     expect(profile.url.searchParams.get('id')).toBe(`eq.${PLAYER_ID}`);
     expect(profile.headers.get('Authorization')).toBe('Bearer fake-access-token');
+  });
+
+  test('signIn with a changed name logs in to the account filed under the original name', async () => {
+    const { fetch, requests } = fakeServer({
+      ...loggedInRoutes,
+      [LOOKUP]: { body: 'original_name' },
+      'GET /rest/v1/profiles': { body: { username: 'original_name', display_name: 'top_gun', role: 'user' } },
+    });
+    const auth = newAuth(fetch);
+
+    await expect(auth.signIn({ username: 'top_gun', password: 'secret123' })).resolves.toMatchObject({
+      username: 'original_name',
+      displayName: 'top_gun',
+    });
+    const login = requests.find((r) => r.url.pathname === '/auth/v1/token');
+    expect(login.body).toMatchObject({ email: 'original_name@players.space-shooter.local' });
+  });
+
+  test('an unknown login name looks like a wrong password and sends no login', async () => {
+    const { fetch, requests } = fakeServer({ ...loggedInRoutes, [LOOKUP]: { body: null } });
+    const error = await newAuth(fetch)
+      .signIn({ username: 'nobody', password: 'secret123' })
+      .catch((e) => e);
+    expect(error.message).toBe('Wrong username or password');
+    expect(error.code).toBe('invalid_credentials');
+    expect(requests.filter((r) => r.url.pathname === '/auth/v1/token')).toHaveLength(0);
   });
 
   test('invalid input is rejected before anything is sent', async () => {
@@ -120,6 +154,7 @@ test.describe('auth service', () => {
 
   test('wrong password gives a readable error with the code', async () => {
     const { fetch } = fakeServer({
+      [LOOKUP]: { body: 'pilot' },
       'POST /auth/v1/token': {
         status: 400,
         body: { error_code: 'invalid_credentials', msg: 'Invalid login credentials' },
@@ -134,8 +169,9 @@ test.describe('auth service', () => {
 
   test('signUp creates the account and logs it in', async () => {
     const { fetch, requests } = fakeServer({
+      [LOOKUP]: { body: null }, // nobody logs in with this name yet
       'POST /auth/v1/signup': { body: sessionBody() },
-      'GET /rest/v1/profiles': { body: { username: 'new_pilot', role: 'user' } },
+      'GET /rest/v1/profiles': { body: { username: 'new_pilot', display_name: 'new_pilot', role: 'user' } },
     });
     const auth = newAuth(fetch);
 
@@ -149,8 +185,17 @@ test.describe('auth service', () => {
     expect(JSON.stringify(signup.body)).not.toContain('admin');
   });
 
+  test('signUp with a name another player logs in with (their display name)', async () => {
+    const { fetch, requests } = fakeServer({ [LOOKUP]: { body: 'someone_else' } });
+    await expect(newAuth(fetch).signUp({ username: 'top_gun', password: 'secret123' })).rejects.toThrow(
+      'That username is taken',
+    );
+    expect(requests.filter((r) => r.url.pathname === '/auth/v1/signup')).toHaveLength(0);
+  });
+
   test('signUp with a taken username', async () => {
     const { fetch } = fakeServer({
+      [LOOKUP]: { body: null },
       'POST /auth/v1/signup': {
         status: 422,
         body: { error_code: 'user_already_exists', msg: 'User already registered' },
@@ -163,7 +208,10 @@ test.describe('auth service', () => {
 
   test('signUp explains when "Confirm email" is still on in Supabase', async () => {
     // With confirmation on, Supabase returns a user but no session.
-    const { fetch } = fakeServer({ 'POST /auth/v1/signup': { body: { id: PLAYER_ID, aud: 'authenticated' } } });
+    const { fetch } = fakeServer({
+      [LOOKUP]: { body: null },
+      'POST /auth/v1/signup': { body: { id: PLAYER_ID, aud: 'authenticated' } },
+    });
     await expect(newAuth(fetch).signUp({ username: 'pilot', password: 'secret123' })).rejects.toThrow(
       '"Confirm email" is on',
     );
@@ -222,6 +270,46 @@ test.describe('auth service', () => {
     await expect(auth.changePassword({ currentPassword: 'secret123', newPassword: 'long-enough' })).rejects.toThrow(
       'You are not logged in',
     );
+  });
+
+  test('changeDisplayName calls the database function and returns the renamed player', async () => {
+    let renamed = false;
+    const { fetch, requests } = fakeServer({
+      ...loggedInRoutes,
+      'POST /rest/v1/rpc/set_display_name': () => {
+        renamed = true;
+        return { body: 'top_gun' };
+      },
+      // After the rename the profile shows the new name; the username stays.
+      'GET /rest/v1/profiles': () => ({
+        body: { username: 'pilot_42', display_name: renamed ? 'top_gun' : 'pilot_42', role: 'user' },
+      }),
+    });
+    const auth = newAuth(fetch);
+    await auth.signIn({ username: 'pilot_42', password: 'secret123' });
+
+    await expect(auth.changeDisplayName('  Top_Gun ')).resolves.toMatchObject({
+      username: 'pilot_42',
+      displayName: 'top_gun',
+    });
+    const call = requests.find((r) => r.url.pathname === '/rest/v1/rpc/set_display_name');
+    expect(call.body).toEqual({ new_name: 'top_gun' });
+  });
+
+  test('changeDisplayName shows the database message, e.g. a taken name', async () => {
+    const { fetch } = fakeServer({
+      ...loggedInRoutes,
+      'POST /rest/v1/rpc/set_display_name': { status: 400, body: { code: 'P0001', message: 'That username is taken' } },
+    });
+    const auth = newAuth(fetch);
+    await auth.signIn({ username: 'pilot_42', password: 'secret123' });
+    await expect(auth.changeDisplayName('taken_name')).rejects.toThrow('That username is taken');
+  });
+
+  test('changeDisplayName refuses an invalid name before asking the server', async () => {
+    const { fetch, requests } = fakeServer(loggedInRoutes);
+    await expect(newAuth(fetch).changeDisplayName('x')).rejects.toThrow('Username must be 3-16 characters');
+    expect(requests).toHaveLength(0);
   });
 
   test('setRole sends only the role for one player', async () => {

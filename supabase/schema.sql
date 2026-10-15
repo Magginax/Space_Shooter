@@ -165,26 +165,78 @@ create policy "Test accounts can delete test rows"
 revoke delete on public.scores from anon;
 grant delete on public.scores to authenticated;
 
--- Renaming a player (added 2026-10-15). The username is the part of the login
--- e-mail before "@", so the page renames by changing the account's e-mail
--- (supabase.auth.updateUser). This trigger copies the new name into profiles.
--- Works immediately only while "Confirm email" is OFF; otherwise Supabase
--- would wait for a confirmation mail that can never arrive.
-create function public.handle_user_email_change()
+-- ---------------------------------------------------------------------------
+-- Display name = the name players see AND log in with (added 2026-10-15).
+-- Run this whole block once, after the blocks above.
+--
+-- profiles.username and the Supabase Auth account never change: the player
+-- stays filed under the name they registered with. display_name starts equal
+-- to it and the player may change it in PROFILE; from then on they log in
+-- with the new name. The page asks login_name_for() which account a name
+-- belongs to, then logs in to that account (src/services/auth.js).
+
+alter table public.profiles add column display_name text;
+update public.profiles set display_name = username where display_name is null;
+alter table public.profiles
+  alter column display_name set not null,
+  -- Same rule as the username: it is a login name too. Only lower case, so
+  -- "unique" also means "unique regardless of letter case".
+  add constraint profiles_display_name_format check (display_name ~ '^[a-z0-9_]{3,16}$'),
+  add constraint profiles_display_name_unique unique (display_name);
+
+-- New accounts start with display_name = username (replaces the function above).
+create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
 security definer set search_path = ''
 as $$
+declare
+  name text := lower(split_part(new.email, '@', 1));
 begin
-  update public.profiles
-  set username = lower(split_part(new.email, '@', 1))
-  where id = new.id;
+  insert into public.profiles (id, username, display_name)
+  values (new.id, name, name);
   return new;
 end;
 $$;
 
-create trigger on_auth_user_email_changed
-  after update of email on auth.users
-  for each row
-  when (old.email is distinct from new.email)
-  execute function public.handle_user_email_change();
+-- The only way to change display_name, and only your own. Players get no
+-- update right on profiles, otherwise they could change their role as well.
+create function public.set_display_name(new_name text)
+returns text
+language plpgsql
+security definer set search_path = ''
+as $$
+declare
+  name text := lower(btrim(new_name));
+begin
+  if auth.uid() is null then
+    raise exception 'You are not logged in';
+  end if;
+  update public.profiles set display_name = name where id = auth.uid();
+  return name;
+exception
+  -- Readable messages; src/services/auth.js shows them as they are.
+  when unique_violation then
+    raise exception 'That username is taken';
+  when check_violation then
+    raise exception 'Username must be 3-16 characters: letters, numbers or _';
+end;
+$$;
+
+revoke execute on function public.set_display_name(text) from public, anon;
+grant execute on function public.set_display_name(text) to authenticated;
+
+-- Which account a login name belongs to: the original username, or null.
+-- Called BEFORE logging in, so visitors (anon) may call it. It only reveals
+-- the original username of a display name, never anything else.
+create function public.login_name_for(name text)
+returns text
+language sql
+stable
+security definer set search_path = ''
+as $$
+  select username from public.profiles where display_name = lower(btrim(name));
+$$;
+
+revoke execute on function public.login_name_for(text) from public;
+grant execute on function public.login_name_for(text) to anon, authenticated;

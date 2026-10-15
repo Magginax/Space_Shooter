@@ -65,7 +65,7 @@ test('a non-admin cannot make themselves admin', async () => {
   await auth.signOut();
 });
 
-test('the username cannot be changed (it is the login name)', async () => {
+test('the username cannot be changed directly (the account is filed under it)', async () => {
   // Raw client, logged in as the tester, for what the app never does.
   const db = createClient(url, key, { auth: { persistSession: false } });
   const { data, error: loginError } = await db.auth.signInWithPassword({ email: usernameToEmail(username), password });
@@ -97,5 +97,37 @@ test('changing the password needs the current one and takes effect', async () =>
     await expect(newAuth().signIn({ username, password: temporary })).resolves.toMatchObject({ role: 'test' });
   } finally {
     await auth.changePassword({ currentPassword: temporary, newPassword: password });
+  }
+});
+
+test('visitors can look up which account a login name belongs to, nothing more', async () => {
+  const anon = createClient(url, key, { auth: { persistSession: false } });
+  const { data, error } = await anon.rpc('login_name_for', { name: username });
+  expect(error).toBeNull();
+  expect(data).toBe(username.toLowerCase());
+  // Visitors cannot rename anyone.
+  const rename = await anon.rpc('set_display_name', { new_name: 'hacker' });
+  expect(rename.error).not.toBeNull();
+});
+
+// Changes the test account's display name and always changes it back
+// (finally), so the next run can log in again.
+test('after a rename the account logs in with the new name; the username stays', async () => {
+  const { auth, player } = await logInAsTester();
+  const original = player.displayName;
+  const temporary = `${original}_r`.slice(0, 16);
+  try {
+    await expect(auth.changeDisplayName(temporary)).resolves.toMatchObject({
+      username: player.username, // the account is still filed under the original name
+      displayName: temporary,
+      role: 'test', // renaming cannot touch the role
+    });
+    await expect(newAuth().signIn({ username: temporary, password })).resolves.toMatchObject({ role: 'test' });
+    const oldName = await newAuth()
+      .signIn({ username: original, password })
+      .catch((e) => e);
+    expect(oldName.code).toBe('invalid_credentials');
+  } finally {
+    await auth.changeDisplayName(original);
   }
 });

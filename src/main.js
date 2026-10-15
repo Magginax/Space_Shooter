@@ -20,14 +20,14 @@ const loginToGame = loginUrl(import.meta.env.BASE_URL, `${location.pathname}#gam
 async function saveFinalScore(player, score) {
   if (player.isGuest) return;
   try {
-    await saveScore(player.username, score);
+    await saveScore(player.displayName, score);
   } catch (error) {
     console.error(error); // the game goes on even if the leaderboard is down
   }
 }
 
 function startGame(player) {
-  playerName.textContent = player.username;
+  playerName.textContent = player.displayName;
   guestNote.hidden = !player.isGuest;
   gameArea.hidden = false;
   section.dataset.access = 'granted';
