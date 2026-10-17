@@ -1,4 +1,5 @@
 import { GameLoop, clamp, randomBetween, rectsOverlap } from '../engine/index.js';
+import { DART, GHOST_ALPHA, HEART, SHIP, drawNumber as paintNumber, drawSprite as paintSprite, spriteBox } from './lcdArt.js';
 
 // Like SpaceBackground, the scene is drawn at a low resolution and scaled up by
 // CSS (image-rendering: pixelated). About this many LCD pixels fit across the
@@ -6,8 +7,6 @@ import { GameLoop, clamp, randomBetween, rectsOverlap } from '../engine/index.js
 const TARGET_WIDTH = 170;
 
 const INK = '#13280b';
-// Real LCD segments never fully disappear: unlit ones show faintly ("ghost 8").
-const GHOST_ALPHA = 0.1;
 // Each frame only part of the old picture is erased, so moving things leave a
 // short smear like on a slow phone LCD. 1 would mean no smear.
 const FADE_PER_FRAME = 0.5;
@@ -38,21 +37,8 @@ const tilt = (x, y, direction = 1) => {
   return [x * Math.cos(angle) - y * Math.sin(angle), x * Math.sin(angle) + y * Math.cos(angle)];
 };
 
-// Pixel art, one character per pixel ('#' = dark pixel). Our own drawings in
-// the style of old phone games. Lists of two = animation frames.
-const SHIP = [
-  '###........',
-  '.###.......',
-  '..#######..',
-  '####..#####',
-  '..#######..',
-  '.###.......',
-  '###........',
-];
-const DART = [
-  ['....#.#.', '...##.#.', '..####.#', '#######.', '..####.#', '...##.#.', '....#.#.'],
-  ['....##..', '...#.#.#', '..###.#.', '########', '..###.#.', '...#.#.#', '....##..'],
-];
+// Pixel art, one character per pixel ('#' = dark pixel). Ship, darts and hearts
+// live in lcdArt.js. Lists of two = animation frames.
 const MINE = [
   ['..###..', '.#...#.', '#.#.#.#', '#..#..#', '#.#.#.#', '.#...#.', '..###..'],
   ['..###..', '.#.#.#.', '#..#..#', '#######', '#..#..#', '.#.#.#.', '..###..'],
@@ -60,16 +46,6 @@ const MINE = [
 const ORB = [
   ['.#.', '###', '.#.'],
   ['#.#', '.#.', '#.#'],
-];
-const HEART = [
-  '.##...##.',
-  '####.####',
-  '#########',
-  '#########',
-  '.#######.',
-  '..#####..',
-  '...###...',
-  '....#....',
 ];
 const BOMB = [
   '....##.',
@@ -127,21 +103,6 @@ const hash = (n) => {
   const s = Math.sin(n * 127.1) * 43758.5453;
   return s - Math.floor(s);
 };
-
-// 7-segment digits like on a calculator: which segments (a-g) each digit lights,
-// and where each segment sits inside a 5x9 pixel digit: [x, y, width, height].
-const DIGIT_SEGMENTS = ['abcdef', 'bc', 'abdeg', 'abcdg', 'bcfg', 'acdfg', 'acdefg', 'abc', 'abcdefg', 'abcdfg'];
-const SEGMENT_RECTS = {
-  a: [1, 0, 3, 1],
-  b: [4, 1, 1, 3],
-  c: [4, 5, 1, 3],
-  d: [1, 8, 3, 1],
-  e: [0, 5, 1, 3],
-  f: [0, 1, 1, 3],
-  g: [1, 4, 3, 1],
-};
-
-const spriteBox = (sprite, x, y) => ({ x, y, w: sprite[0].length, h: sprite.length });
 
 /**
  * Animated "phone LCD" shoot 'em up behind the login form: a ship fights waves
@@ -567,13 +528,7 @@ export class LcdScene {
   }
 
   drawSprite(sprite, x, y) {
-    const left = Math.round(x);
-    const top = Math.round(y);
-    sprite.forEach((row, dy) => {
-      for (let dx = 0; dx < row.length; dx++) {
-        if (row[dx] === '#') this.ctx.fillRect(left + dx, top + dy, 1, 1);
-      }
-    });
+    paintSprite(this.ctx, sprite, x, y);
   }
 
   /** Two animation frames switch every `seconds`. */
@@ -919,15 +874,6 @@ export class LcdScene {
 
   /** `value` in 7-segment digits whose right edge is at `right`. */
   drawNumber(value, digits, right, top) {
-    const { ctx } = this;
-    const text = String(value).padStart(digits, '0').slice(-digits);
-    [...text].forEach((char, i) => {
-      const left = right - (digits - i) * 7 + 2;
-      for (const [segment, [x, y, w, h]] of Object.entries(SEGMENT_RECTS)) {
-        ctx.globalAlpha = DIGIT_SEGMENTS[char].includes(segment) ? 1 : GHOST_ALPHA;
-        ctx.fillRect(left + x, top + y, w, h);
-      }
-    });
-    ctx.globalAlpha = 1;
+    paintNumber(this.ctx, value, digits, right, top);
   }
 }

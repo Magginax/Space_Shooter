@@ -12,6 +12,8 @@ export class HomePage {
     this.gameArea = page.getByTestId('game-area');
     this.playerName = page.getByTestId('player-name');
     this.guestNote = page.getByTestId('guest-note');
+    this.canvas = page.getByTestId('game-canvas');
+    this.startButton = page.getByTestId('start-game');
   }
 
   // --- Actions ------------------------------------------------------------------
@@ -64,5 +66,33 @@ export class HomePage {
     await expect(this.playerName).toHaveText(username);
     if (guest) await expect(this.guestNote).toHaveText('(guest: scores are not saved)');
     else await expect(this.guestNote).toBeHidden();
+  }
+
+  async expectIdleGame() {
+    await expect(this.canvas).toHaveAttribute('data-state', 'idle');
+    await expect(this.canvas).toHaveAttribute('data-lives', '3');
+    await expect(this.canvas).toHaveAttribute('data-score', '0');
+    await expect(this.startButton).toBeVisible();
+  }
+
+  async startGame() {
+    await this.startButton.click();
+  }
+
+  async expectGameRunning() {
+    await expect(this.canvas).toHaveAttribute('data-state', 'running');
+    await expect(this.startButton).toBeHidden();
+  }
+
+  async holdFire() {
+    await this.page.keyboard.down('Space');
+  }
+
+  async releaseFire() {
+    await this.page.keyboard.up('Space');
+  }
+
+  async expectScoreAbove(min) {
+    await expect.poll(async () => Number(await this.canvas.getAttribute('data-score'))).toBeGreaterThan(min);
   }
 }

@@ -32,15 +32,22 @@ function startGame(player) {
   gameArea.hidden = false;
   section.dataset.access = 'granted';
 
-  // The game only exists for players: without login there is nothing to start.
-  // TODO: start it (game.start()) once the game has a start screen or button.
+  const startButton = document.querySelector('[data-testid="start-game"]');
   const game = new SpaceShooterGame(canvas, {
-    onGameOver: (score) => saveFinalScore(player, score),
+    onGameOver: (score) => {
+      startButton.hidden = false;
+      saveFinalScore(player, score);
+    },
   });
 
-  // Stop arrow keys from scrolling the page while playing.
+  startButton.addEventListener('click', () => {
+    game.start();
+    startButton.hidden = true;
+    startButton.blur();
+  });
+
   window.addEventListener('keydown', (e) => {
-    if (game.state === 'running' && e.key.startsWith('Arrow')) e.preventDefault();
+    if (game.state === 'running' && (e.key.startsWith('Arrow') || e.key === ' ')) e.preventDefault();
   });
 }
 

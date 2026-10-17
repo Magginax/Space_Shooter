@@ -39,7 +39,12 @@
             <a data-testid="account-link" href="./views/login.html">Account</a>
           </p>
           <!-- The Space Shooter game draws here (src/games/space-shooter/). -->
-          <canvas id="game-canvas" width="480" height="320" data-testid="game-canvas" data-state="idle"></canvas>
+          <div class="game-screen" data-testid="game-screen">
+            <div class="game-lcd">
+              <canvas id="game-canvas" data-testid="game-canvas" data-state="idle" data-lives="3" data-score="0"></canvas>
+            </div>
+            <button type="button" class="start-game" data-testid="start-game">PLAY</button>
+          </div>
         </div>
       </section>
     </main>

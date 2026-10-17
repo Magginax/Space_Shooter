@@ -61,6 +61,54 @@ canvas {
   border-radius: 8px;
 }
 
+/* Same backlight and pixel grid as the login screen. */
+.game-screen {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 4px;
+  background: radial-gradient(ellipse at 45% 40%, #bdea74, #a6d85c 55%, #86b843);
+  color: #13280b;
+}
+
+.game-lcd {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+}
+
+.game-lcd canvas {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  border-radius: 0;
+  image-rendering: pixelated;
+}
+
+/* Thin light lines between the LCD pixels. --px is one LCD pixel in CSS pixels. */
+.game-lcd::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgb(220 255 160 / 0.22) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(220 255 160 / 0.22) 1px, transparent 1px);
+  background-size: var(--px, 4px) var(--px, 4px);
+}
+
+.game-screen .start-game {
+  position: relative;
+  z-index: 2;
+  border: 2px solid #13280b;
+  border-radius: 0;
+  background: #13280b;
+  color: #a6d85c;
+  letter-spacing: 0.08em;
+}
+
 /* Shown instead of the game until the visitor logs in or chooses guest mode. */
 .game-lock {
   padding: 2rem 1rem;
