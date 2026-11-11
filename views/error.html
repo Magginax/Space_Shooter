@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+    <title>Game - Space_Shooter</title>
+</head>
+
+<body class="handheld">
+    <main class="desk">
+        <a class="back-link" href="../">&lt; BACK</a>
+
+        <!-- The handheld console. Only the form inside the screen is interactive;
+           the rest (LED, speaker, buttons) is decoration. -->
+        <div class="device">
+            <div class="device-top" aria-hidden="true">
+                <span class="led"></span>
+                <span class="brand">SPACE<b>_</b>SHOOTER</span>
+                <span class="model">LCD-01 · DOT MATRIX</span>
+            </div>
+
+            <div class="bezel">
+                <div class="screen" data-testid="screen">
+                    <h1 id="error-code">404</h1>
+                    <p id="error-message">Sector not found or transmission lost in deep space.</p>
+                    <a href="/" class="start">Return to Base</a>
+
+                    <div class="glare" aria-hidden="true"></div>
+                </div>
+            </div>
+
+            <div class="controls" aria-hidden="true">
+                <div class="dpad"><span></span></div>
+                <div class="speaker"></div>
+                <div class="ab">
+                    <button type="button" tabindex="-1" data-fire>B</button>
+                    <button type="button" tabindex="-1" data-fire>A</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script type="module" src="/src/error.js"></script>
+</body>
+
+</html>
