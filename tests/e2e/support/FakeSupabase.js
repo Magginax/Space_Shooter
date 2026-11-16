@@ -1,4 +1,5 @@
 import { expect } from '@playwright/test';
+import { progressFromXp } from '../../../src/games/space-shooter/experience.js';
 
 // The test build points at this fake address (webServer.env in playwright.config.js).
 const SUPABASE = 'https://supabase.test';
@@ -39,7 +40,7 @@ export class FakeSupabase {
     this.requests = [];
     this.role = 'user';
     this.profileStatus = 200;
-    this.accounts = [{ username: 'ace_pilot', displayName: 'ace_pilot', password: PASSWORD }];
+    this.accounts = [{ username: 'ace_pilot', displayName: 'ace_pilot', password: PASSWORD, xp: 0 }];
     this.current = null; // the account that is logged in
   }
 
@@ -56,7 +57,7 @@ export class FakeSupabase {
 
   /** Another player logs in with this name: sign-up and rename to it are refused. */
   withTakenUsername(name) {
-    this.accounts.push({ username: 'someone_else', displayName: name, password: 'other-password' });
+    this.accounts.push({ username: 'someone_else', displayName: name, password: 'other-password', xp: 0 });
   }
 
   /** The database refuses the login token, like for a made-up one. */
@@ -108,7 +109,7 @@ export class FakeSupabase {
   }
 
   addAccount(username, password) {
-    const account = { username, displayName: username, password };
+    const account = { username, displayName: username, password, xp: 0 };
     this.accounts.push(account);
     return account;
   }
@@ -125,6 +126,18 @@ export class FakeSupabase {
       return route.fulfill({ json: this.accountNamed(body.name)?.username ?? null });
     }
     // Database function: change the display name of the logged-in player.
+    if (url.pathname === '/rest/v1/rpc/set_xp') {
+      if (!this.current) return route.fulfill({ status: 400, json: { message: 'You are not logged in' } });
+      const next = body.new_xp;
+      if (!Number.isInteger(next) || next < 0) {
+        return route.fulfill({ status: 400, json: { message: 'Experience must be zero or more' } });
+      }
+      if (next < this.current.xp) {
+        return route.fulfill({ status: 400, json: { message: 'Experience cannot go down' } });
+      }
+      this.current.xp = next;
+      return route.fulfill({ json: next });
+    }
     if (url.pathname === '/rest/v1/rpc/set_display_name') {
       const taken = this.accounts.some((a) => a !== this.current && a.displayName === body.new_name);
       if (taken) return route.fulfill({ status: 400, json: { code: 'P0001', message: 'That username is taken' } });
@@ -153,8 +166,11 @@ export class FakeSupabase {
       if (this.profileStatus !== 200) {
         return route.fulfill({ status: this.profileStatus, json: { message: 'JWT invalid' } });
       }
-      const { username, displayName } = this.current;
-      return route.fulfill({ json: { username, display_name: displayName, role: this.role } });
+      const { username, displayName, xp } = this.current;
+      const progress = progressFromXp(xp);
+      return route.fulfill({
+        json: { username, display_name: displayName, role: this.role, xp: progress.xp, level: progress.level },
+      });
     }
     return route.fulfill({ status: 204 }); // e.g. /auth/v1/logout
   }

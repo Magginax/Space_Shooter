@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { createAuth, validateCredentials, usernameToEmail } from '../../src/services/auth.js';
+import { defaultLoadout } from '../../src/games/space-shooter/weapons.js';
 
 const config = { url: 'https://test.supabase.co', key: 'test-key' };
 const PLAYER_ID = '11111111-1111-4111-8111-111111111111';
@@ -55,7 +56,7 @@ const LOOKUP = 'POST /rest/v1/rpc/login_name_for';
 const loggedInRoutes = {
   [LOOKUP]: { body: 'pilot_42' },
   'POST /auth/v1/token': { body: sessionBody() },
-  'GET /rest/v1/profiles': { body: { username: 'pilot_42', display_name: 'pilot_42', role: 'user' } },
+  'GET /rest/v1/profiles': { body: { username: 'pilot_42', display_name: 'pilot_42', role: 'user', level: 0, xp: 0 } },
 };
 
 const newAuth = (fetch) => createAuth({ ...config, fetch, storage: memoryStorage() });
@@ -103,6 +104,9 @@ test.describe('auth service', () => {
       username: 'pilot_42',
       displayName: 'pilot_42',
       role: 'user',
+      level: 0,
+      xp: 0,
+      loadout: defaultLoadout(),
     });
 
     const lookup = requests.find((r) => r.url.pathname === '/rest/v1/rpc/login_name_for');
@@ -122,7 +126,7 @@ test.describe('auth service', () => {
     const { fetch, requests } = fakeServer({
       ...loggedInRoutes,
       [LOOKUP]: { body: 'original_name' },
-      'GET /rest/v1/profiles': { body: { username: 'original_name', display_name: 'top_gun', role: 'user' } },
+      'GET /rest/v1/profiles': { body: { username: 'original_name', display_name: 'top_gun', role: 'user', level: 0, xp: 0 } },
     });
     const auth = newAuth(fetch);
 
@@ -171,7 +175,7 @@ test.describe('auth service', () => {
     const { fetch, requests } = fakeServer({
       [LOOKUP]: { body: null }, // nobody logs in with this name yet
       'POST /auth/v1/signup': { body: sessionBody() },
-      'GET /rest/v1/profiles': { body: { username: 'new_pilot', display_name: 'new_pilot', role: 'user' } },
+      'GET /rest/v1/profiles': { body: { username: 'new_pilot', display_name: 'new_pilot', role: 'user', level: 0, xp: 0 } },
     });
     const auth = newAuth(fetch);
 
@@ -282,7 +286,7 @@ test.describe('auth service', () => {
       },
       // After the rename the profile shows the new name; the username stays.
       'GET /rest/v1/profiles': () => ({
-        body: { username: 'pilot_42', display_name: renamed ? 'top_gun' : 'pilot_42', role: 'user' },
+        body: { username: 'pilot_42', display_name: renamed ? 'top_gun' : 'pilot_42', role: 'user', level: 0, xp: 0 },
       }),
     });
     const auth = newAuth(fetch);
@@ -310,6 +314,50 @@ test.describe('auth service', () => {
     const { fetch, requests } = fakeServer(loggedInRoutes);
     await expect(newAuth(fetch).changeDisplayName('x')).rejects.toThrow('Username must be 3-16 characters');
     expect(requests).toHaveLength(0);
+  });
+
+  test('setXp sends the lifetime total', async () => {
+    const { fetch, requests } = fakeServer({ ...loggedInRoutes, 'POST /rest/v1/rpc/set_xp': { body: 250 } });
+    const auth = newAuth(fetch);
+    await auth.signIn({ username: 'pilot_42', password: 'secret123' });
+
+    await expect(auth.setXp(250)).resolves.toBe(250);
+    const call = requests.find((r) => r.url.pathname === '/rest/v1/rpc/set_xp');
+    expect(call.body).toEqual({ new_xp: 250 });
+  });
+
+  test('setXp refuses a bad total before asking the server, and needs a login', async () => {
+    const { fetch, requests } = fakeServer(loggedInRoutes);
+    const auth = newAuth(fetch);
+
+    await expect(auth.setXp(-1)).rejects.toThrow('Experience must be zero or more');
+    await expect(auth.setXp(1.5)).rejects.toThrow('Experience must be zero or more');
+    await expect(auth.setXp(50)).rejects.toThrow('You are not logged in');
+    expect(requests.filter((r) => r.url.pathname === '/rest/v1/rpc/set_xp')).toHaveLength(0);
+  });
+
+  test('setLoadout sends the mounted gun and its ranks', async () => {
+    const loadout = {
+      gun: 'blaster',
+      ranks: {
+        blaster: { rate: 0, shot: 0, pierce: 0 },
+        beam: { rate: 0, shot: 0, pierce: 0 },
+        pods: { rate: 0, shot: 0, pierce: 0 },
+      },
+    };
+    const { fetch, requests } = fakeServer({ ...loggedInRoutes, 'POST /rest/v1/rpc/set_loadout': { body: loadout } });
+    const auth = newAuth(fetch);
+    await auth.signIn({ username: 'pilot_42', password: 'secret123' });
+
+    await expect(auth.setLoadout(loadout)).resolves.toEqual(loadout);
+    const call = requests.find((r) => r.url.pathname === '/rest/v1/rpc/set_loadout');
+    expect(call.body).toEqual({ new_loadout: loadout });
+  });
+
+  test('setLoadout needs a login', async () => {
+    const { fetch, requests } = fakeServer(loggedInRoutes);
+    await expect(newAuth(fetch).setLoadout({ gun: 'blaster' })).rejects.toThrow('You are not logged in');
+    expect(requests.filter((r) => r.url.pathname === '/rest/v1/rpc/set_loadout')).toHaveLength(0);
   });
 
   test('setRole sends only the role for one player', async () => {

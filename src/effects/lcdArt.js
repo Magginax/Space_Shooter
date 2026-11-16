@@ -30,6 +30,45 @@ export const HEART = [
   '....#....',
 ];
 
+// Login ground decoration.
+export const SKULL = [
+  '.####.',
+  '#.##.#',
+  '######',
+  '.#..#.',
+  '.####.',
+];
+
+// Folded map: three islands and a short road between them.
+export const MAP = [
+  '###########',
+  '#.#.#.....#',
+  '##..#.....#',
+  '#......##.#',
+  '#......##.#',
+  '#.....#...#',
+  '#....##...#',
+  '#....##...#',
+  '#.##.#....#',
+  '#.##......#',
+  '###########',
+];
+
+// Matching frame. Three up-chevrons, the retro rank-up mark.
+export const UPGRADE = [
+  '###########',
+  '#....#....#',
+  '#...#.#...#',
+  '#..#...#..#',
+  '#....#....#',
+  '#...#.#...#',
+  '#..#...#..#',
+  '#....#....#',
+  '#...#.#...#',
+  '#..#...#..#',
+  '###########',
+];
+
 // Which segments (a-g) each digit lights, and where each segment sits
 // inside a 5x9 pixel digit: [x, y, width, height].
 const DIGIT_SEGMENTS = ['abcdef', 'bc', 'abdeg', 'abcdg', 'bcfg', 'acdfg', 'acdefg', 'abc', 'abcdefg', 'abcdfg'];
@@ -54,6 +93,137 @@ export function drawSprite(ctx, sprite, x, y) {
       if (row[dx] === '#') ctx.fillRect(left + dx, top + dy, 1, 1);
     }
   });
+}
+
+// Compact 3×5 digits for the experience level. One row is one pixel.
+const SMALL_DIGITS = [
+  ['###', '#.#', '#.#', '#.#', '###'],
+  ['.#.', '##.', '.#.', '.#.', '.#.'],
+  ['###', '..#', '###', '#..', '###'],
+  ['###', '..#', '###', '..#', '###'],
+  ['#.#', '#.#', '###', '..#', '..#'],
+  ['###', '#..', '##.', '..#', '###'],
+  ['###', '#..', '###', '#.#', '###'],
+  ['###', '..#', '..#', '..#', '..#'],
+  ['###', '#.#', '###', '#.#', '###'],
+  ['###', '#.#', '###', '..#', '###'],
+];
+const SMALL_DIGIT_W = 3;
+const SMALL_DIGIT_GAP = 1;
+
+/** Width of `value` drawn by drawSmallNumber. */
+export function smallNumberWidth(value) {
+  const digits = String(Math.max(0, Math.floor(value))).length;
+  return digits * SMALL_DIGIT_W + (digits - 1) * SMALL_DIGIT_GAP;
+}
+
+// 5×5 letters. A 3×5 glyph sat on the frame, so M and U both collapsed into a bar.
+const KEY_GLYPHS = {
+  M: ['#...#', '##.##', '#.#.#', '#...#', '#...#'],
+  U: ['#...#', '#...#', '#...#', '#...#', '.###.'],
+};
+const KEY_PAD = 1;
+export const KEYCAP_W = KEY_GLYPHS.M[0].length + KEY_PAD * 2 + 2;
+export const KEYCAP_H = KEY_GLYPHS.M.length + KEY_PAD * 2 + 2;
+
+/** A 9×9 keycap: 1px frame, 1px of air, then the letter. `glyph` is "M" or "U". */
+export function drawKeycap(ctx, glyph, x, y) {
+  const rows = KEY_GLYPHS[glyph];
+  const left = Math.round(x);
+  const top = Math.round(y);
+  ctx.fillRect(left, top, KEYCAP_W, 1);
+  ctx.fillRect(left, top + KEYCAP_H - 1, KEYCAP_W, 1);
+  ctx.fillRect(left, top, 1, KEYCAP_H);
+  ctx.fillRect(left + KEYCAP_W - 1, top, 1, KEYCAP_H);
+  const ox = left + 1 + KEY_PAD;
+  const oy = top + 1 + KEY_PAD;
+  rows.forEach((row, dy) => {
+    for (let dx = 0; dx < row.length; dx++) {
+      if (row[dx] === '#') ctx.fillRect(ox + dx, oy + dy, 1, 1);
+    }
+  });
+}
+
+/** `value` in 3×5 digits whose left edge is at `left`. Lit pixels only. */
+export function drawSmallNumber(ctx, value, left, top) {
+  const text = String(Math.max(0, Math.floor(value)));
+  let x = Math.round(left);
+  const y = Math.round(top);
+  for (const char of text) {
+    SMALL_DIGITS[Number(char)].forEach((row, dy) => {
+      for (let dx = 0; dx < row.length; dx++) {
+        if (row[dx] === '#') ctx.fillRect(x + dx, y + dy, 1, 1);
+      }
+    });
+    x += SMALL_DIGIT_W + SMALL_DIGIT_GAP;
+  }
+}
+
+// 3×5 uppercase. One row is one pixel high. A space is a blank cell.
+const FONT = {
+  0: SMALL_DIGITS[0],
+  1: SMALL_DIGITS[1],
+  2: SMALL_DIGITS[2],
+  3: SMALL_DIGITS[3],
+  4: SMALL_DIGITS[4],
+  5: SMALL_DIGITS[5],
+  6: SMALL_DIGITS[6],
+  7: SMALL_DIGITS[7],
+  8: SMALL_DIGITS[8],
+  9: SMALL_DIGITS[9],
+  A: ['###', '#.#', '###', '#.#', '#.#'],
+  B: ['##.', '#.#', '##.', '#.#', '##.'],
+  C: ['###', '#..', '#..', '#..', '###'],
+  D: ['##.', '#.#', '#.#', '#.#', '##.'],
+  E: ['###', '#..', '##.', '#..', '###'],
+  F: ['###', '#..', '##.', '#..', '#..'],
+  G: ['##.', '#..', '#.#', '#.#', '###'],
+  H: ['#.#', '#.#', '###', '#.#', '#.#'],
+  I: ['###', '.#.', '.#.', '.#.', '###'],
+  J: ['..#', '..#', '..#', '#.#', '###'],
+  K: ['#.#', '##.', '#..', '##.', '#.#'],
+  L: ['#..', '#..', '#..', '#..', '###'],
+  M: ['#.#', '###', '###', '#.#', '#.#'],
+  N: ['##.', '#.#', '#.#', '#.#', '#.#'],
+  O: ['###', '#.#', '#.#', '#.#', '###'],
+  P: ['###', '#.#', '###', '#..', '#..'],
+  Q: ['###', '#.#', '#.#', '###', '..#'],
+  R: ['###', '#.#', '##.', '#.#', '#.#'],
+  S: ['###', '#..', '###', '..#', '###'],
+  T: ['###', '.#.', '.#.', '.#.', '.#.'],
+  U: ['#.#', '#.#', '#.#', '#.#', '###'],
+  V: ['#.#', '#.#', '#.#', '#.#', '.#.'],
+  W: ['#.#', '#.#', '#.#', '###', '#.#'],
+  X: ['#.#', '#.#', '.#.', '#.#', '#.#'],
+  Y: ['#.#', '#.#', '.#.', '.#.', '.#.'],
+  Z: ['###', '..#', '.#.', '#..', '###'],
+  ' ': ['...', '...', '...', '...', '...'],
+  '.': ['...', '...', '...', '...', '.#.'],
+};
+const FONT_W = 3;
+const FONT_GAP = 1;
+export const FONT_H = 5;
+
+/** Width of `text` drawn by drawText. Unknown characters take a blank cell. */
+export function textWidth(text) {
+  const count = [...text].length;
+  if (count === 0) return 0;
+  return count * FONT_W + (count - 1) * FONT_GAP;
+}
+
+/** Uppercase `text` in 3×5 letters whose left edge is at `left`. */
+export function drawText(ctx, text, left, top) {
+  let x = Math.round(left);
+  const y = Math.round(top);
+  for (const char of text) {
+    const glyph = FONT[char] ?? FONT[' '];
+    glyph.forEach((row, dy) => {
+      for (let dx = 0; dx < row.length; dx++) {
+        if (row[dx] === '#') ctx.fillRect(x + dx, y + dy, 1, 1);
+      }
+    });
+    x += FONT_W + FONT_GAP;
+  }
 }
 
 /** `value` in 7-segment digits whose right edge is at `right`. */

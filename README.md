@@ -92,13 +92,17 @@ changes; under **PROFILE** players can change their display name, and from
 then on they log in with the new name (`display_name` + the database
 functions `set_display_name` / `login_name_for`).
 Passwords are kept by Supabase Auth as bcrypt hashes; our `profiles` table
-holds only the username and the role (`admin`, `user`, `test`). The database
-rules (RLS) decide what each role may do, see `supabase/schema.sql`.
+holds the username, the role (`admin`, `user`, `test`), and the player's
+level and lifetime experience (`xp`). The game loads them at login and saves
+the new total after each kill (`set_xp`). The database rules (RLS) decide
+what each role may do, see `supabase/schema.sql`.
 
 One-time setup in the Supabase dashboard:
 
-1. **SQL Editor**: run the blocks added on 2026-10-14 and 2026-10-15 from
-   `supabase/schema.sql`, in order (or the whole file on a new project).
+1. **SQL Editor**: run the blocks added on 2026-10-14, 2026-10-15, and
+   2026-11-11 from `supabase/schema.sql`, in order (or the whole file on a
+   new project). The 2026-11-11 block adds `xp` and `level`; without it,
+   login cannot load a profile.
 2. **Authentication → Sign In / Providers → Email**: turn **off**
    "Confirm email" (logins use `<username>@players.space-shooter.local`,
    an address that never receives mail). Set the minimum password length to 8.
@@ -119,7 +123,7 @@ to `#game` sends visitors to the login page and back to the game afterwards.
 
 ```js
 import { auth } from '../services/account.js';
-const player = await auth.getCurrentPlayer(); // { id, username, role } or null
+const player = await auth.getCurrentPlayer(); // { id, username, role, level, xp } or null
 ```
 
 ## GitHub Pages

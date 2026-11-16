@@ -99,7 +99,8 @@ canvas {
   background-size: var(--px, 4px) var(--px, 4px);
 }
 
-.game-screen .start-game {
+.game-screen .start-game,
+.game-screen .upgrade-back {
   position: relative;
   z-index: 2;
   border: 2px solid #13280b;
@@ -107,6 +108,55 @@ canvas {
   background: #13280b;
   color: #a6d85c;
   letter-spacing: 0.08em;
+}
+
+.game-screen .upgrade-back {
+  position: absolute;
+  left: 0.6rem;
+  bottom: 0.6rem;
+}
+
+.upgrade-back[hidden] { display: none; }
+
+.abandon {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 2px solid #13280b;
+  background: #13280b;
+  color: #a6d85c;
+  text-align: center;
+}
+
+.abandon[hidden] { display: none; }
+
+.abandon p { margin: 0; }
+
+.abandon-choices {
+  display: flex;
+  gap: 1rem;
+}
+
+.abandon[data-choice='no'] [data-testid='abandon-no'],
+.abandon[data-choice='yes'] [data-testid='abandon-yes'] {
+  outline: 2px solid #a6d85c;
+  outline-offset: 2px;
+}
+
+.game-screen:has(canvas[data-state='map']) .start-game,
+.game-screen:has(canvas[data-state='running']) .start-game,
+.game-screen:has(canvas[data-state='paused']) .start-game,
+.game-screen:has(canvas[data-state='upgrades']) .start-game,
+.game-screen:has(canvas[data-state='weapon']) .start-game,
+.game-screen:has(canvas[data-state='debug']) .start-game {
+  display: none;
 }
 
 /* Shown instead of the game until the visitor logs in or chooses guest mode. */

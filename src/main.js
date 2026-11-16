@@ -1,6 +1,6 @@
 import './styles/main.css';
 import { SpaceShooterGame } from './games/space-shooter/SpaceShooterGame.js';
-import { currentPlayer, isAuthConfigured } from './services/account.js';
+import { currentPlayer, isAuthConfigured, saveLoadout, saveProgress } from './services/account.js';
 import { saveScore } from './services/scores.js';
 import { loginUrl } from './services/redirect.js';
 
@@ -33,21 +33,58 @@ function startGame(player) {
   section.dataset.access = 'granted';
 
   const startButton = document.querySelector('[data-testid="start-game"]');
+  const abandonPrompt = document.querySelector('[data-testid="abandon-prompt"]');
+  const backButton = document.querySelector('[data-testid="upgrade-back"]');
   const game = new SpaceShooterGame(canvas, {
+    level: player.level,
+    xp: player.xp,
+    loadout: player.loadout,
+    prompt: abandonPrompt,
+    backButton,
     onGameOver: (score) => {
       startButton.hidden = false;
       saveFinalScore(player, score);
     },
+    onProgress: (xp) => {
+      if (player.isGuest) return;
+      saveProgress(xp).catch((error) => console.error(error));
+    },
+    onLoadout: (loadout) => {
+      if (player.isGuest) return;
+      const previous = player.loadout;
+      saveLoadout(previous, loadout, game.level)
+        .then(() => {
+          player.loadout = loadout;
+        })
+        .catch((error) => {
+          console.error(error);
+          game.setLoadout(previous);
+        });
+    },
   });
 
   startButton.addEventListener('click', () => {
-    game.start();
+    game.openMap();
     startButton.hidden = true;
     startButton.blur();
   });
 
+  backButton.addEventListener('click', () => {
+    game.back();
+    backButton.blur();
+  });
+
   window.addEventListener('keydown', (e) => {
-    if (game.state === 'running' && (e.key.startsWith('Arrow') || e.key === ' ')) e.preventDefault();
+    const playing = game.state === 'map' || game.state === 'running' || game.state === 'paused' || game.state === 'upgrades' || game.state === 'weapon' || game.state === 'debug';
+    if (playing && (e.key.startsWith('Arrow') || e.key === ' ' || e.key === 'Enter')) e.preventDefault();
+    if ((e.key === 'u' || e.key === 'U') && game.state === 'idle') {
+      e.preventDefault();
+      game.openUpgrades();
+    }
+    if ((e.key === '`' || e.key === '~' || e.code === 'Backquote') && game.state === 'idle') {
+      e.preventDefault();
+      game.toggleDebug();
+    }
   });
 }
 

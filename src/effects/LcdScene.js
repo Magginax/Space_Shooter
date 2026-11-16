@@ -1,5 +1,5 @@
 import { GameLoop, clamp, randomBetween, rectsOverlap } from '../engine/index.js';
-import { DART, GHOST_ALPHA, HEART, SHIP, drawNumber as paintNumber, drawSprite as paintSprite, spriteBox } from './lcdArt.js';
+import { DART, GHOST_ALPHA, HEART, SHIP, SKULL, drawNumber as paintNumber, drawSprite as paintSprite, spriteBox } from './lcdArt.js';
 
 // Like SpaceBackground, the scene is drawn at a low resolution and scaled up by
 // CSS (image-rendering: pixelated). About this many LCD pixels fit across the
@@ -74,7 +74,7 @@ const DECOR = [
   { frames: [['#.....#', '##...##', '.#...#.', '.##.##.', '..###..', '...#...']] }, // V plant
   { frames: [['#.#.#', '.###.', '..#..']] }, // grass
   { frames: [['..##..', '.####.', '######']] }, // rock
-  { frames: [['.####.', '#.##.#', '######', '.#..#.', '.####.']] }, // skull
+  { frames: [SKULL] }, // skull
   { frames: [['.....', '.#.#.', '..#..', '..#..', '..#..', '.#.#.', '#...#']], light: [2, 0] }, // antenna
   { frames: [['.###.', '#####', '#.#.#'], ['.###.', '#####', '.#.#.']], walk: 7 }, // beetle
 ];

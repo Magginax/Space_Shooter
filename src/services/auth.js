@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { cloneLoadout } from '../games/space-shooter/weapons.js';
 
 /** Same values as the app_role enum in supabase/schema.sql. */
 export const ROLES = Object.freeze({ ADMIN: 'admin', USER: 'user', TEST: 'test' });
@@ -72,7 +73,7 @@ function authError(action, error) {
  * `fetch` and `storage` are optional: tests pass fakes so they never talk to
  * the real database or need a browser.
  *
- * A player is { id, username, displayName, role }:
+ * A player is { id, username, displayName, role, level, xp }:
  * - username: the name they registered with; never changes (the account is
  *   filed under it)
  * - displayName: the name they are shown with AND log in with; starts equal
@@ -94,11 +95,19 @@ export function createAuth({ url, key, fetch, storage } = {}) {
   async function loadPlayer(userId) {
     const { data, error } = await supabase
       .from('profiles')
-      .select('username, display_name, role')
+      .select('username, display_name, role, level, xp, loadout')
       .eq('id', userId)
       .single();
     if (error) throw new Error(`Could not load the profile: ${error.message}`);
-    return { id: userId, username: data.username, displayName: data.display_name, role: data.role };
+    return {
+      id: userId,
+      username: data.username,
+      displayName: data.display_name,
+      role: data.role,
+      level: data.level,
+      xp: data.xp,
+      loadout: cloneLoadout(data.loadout),
+    };
   }
 
   /** The original username of the account with this login name, or null (database function). */
@@ -195,6 +204,26 @@ export function createAuth({ url, key, fetch, storage } = {}) {
       // The database function already gives readable messages ("That username is taken").
       if (error) throw new Error(error.message);
       return loadPlayer(session.user.id);
+    },
+
+    /**
+     * Saves the lifetime experience total. The database derives the level and
+     * refuses a total lower than the one it already has.
+     */
+    async setXp(xp) {
+      if (!Number.isInteger(xp) || xp < 0) throw new Error('Experience must be zero or more');
+      await requireSession();
+      const { error } = await supabase.rpc('set_xp', { new_xp: xp });
+      if (error) throw new Error(error.message);
+      return xp;
+    },
+
+    /** Saves the mounted gun and its ranks. The database refuses an illegal one. */
+    async setLoadout(loadout) {
+      await requireSession();
+      const { error } = await supabase.rpc('set_loadout', { new_loadout: loadout });
+      if (error) throw new Error(error.message);
+      return loadout;
     },
 
     /** Admins get every player; anyone else only themselves (database rule). */
