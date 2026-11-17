@@ -1,5 +1,6 @@
 import { test as base } from '@playwright/test';
 import { FakeSupabase } from './support/FakeSupabase.js';
+import { ErrorPage } from './pages/ErrorPage.js';
 import { HomePage } from './pages/HomePage.js';
 import { LoginPage } from './pages/LoginPage.js';
 
@@ -25,6 +26,9 @@ export const test = base.extend({
     },
     { auto: true },
   ],
+  errorPage: async ({ page }, use) => {
+    await use(new ErrorPage(page));
+  },
   homePage: async ({ page }, use) => {
     await use(new HomePage(page));
   },
