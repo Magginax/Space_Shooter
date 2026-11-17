@@ -113,7 +113,7 @@ body.handheld {
 
 .bezel {
   padding: 12px;
-  border-radius: 10px 10px 10px 36px;
+  border-radius: 10px;
   background: var(--bezel);
   box-shadow: inset 0 3px 8px rgb(0 0 0 / 0.8), 0 1px 0 rgb(255 255 255 / 0.06);
 }
@@ -222,7 +222,8 @@ body.handheld {
   margin-bottom: 12px;
 }
 .mode {
-  flex: 1;
+  min-width: 30px;
+  min-height: 30px;
   padding: 6px 4px;
   border: 2px solid var(--ink);
   border-radius: 0;
@@ -236,11 +237,15 @@ body.handheld {
   background: var(--ink);
   color: var(--lcd);
 }
+.w100{
+  width: 100%;
+}
 
 .login-form {
   display: grid;
   gap: 4px;
   text-align: left;
+  display: none;
 }
 .login-form label {
   margin-top: 4px;
@@ -264,6 +269,16 @@ body.handheld {
   background: var(--ink);
   color: var(--lcd);
   caret-color: var(--lcd);
+}
+.login-form.active {
+  display: inline;
+  flex-direction: column;
+}
+.login-form_header{
+  margin-bottom: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .hint {
@@ -300,7 +315,7 @@ body.handheld {
   color: var(--ink);
 }
 
-.or {
+.helper-text {
   margin: 2px 0;
   font-size: 0.45rem;
   text-align: center;
