@@ -32,6 +32,24 @@ test.describe('Error page', () => {
     await errorPage.expectRetryVisible(true);
   });
 
+  test('a 500 shows the core malfunction with retry', async ({ errorPage }) => {
+    await errorPage.open('serverError');
+
+    await errorPage.expectCode('500');
+    await errorPage.expectTitle('Core Malfunction - Space_Shooter');
+    await errorPage.expectRetryVisible(true);
+    await errorPage.expectScene('serverError');
+  });
+
+  test('every scene draws without script errors', async ({ errorPage }) => {
+    const scenes = ['notFound', 'forbidden', 'sessionExpired', 'loginRequired', 'scoreRejected', 'scoreConflict', 'rateLimited', 'serverError', 'offline', 'leaderboardOffline', 'maintenance'];
+    for (const scene of scenes) {
+      await errorPage.open(scene);
+      await errorPage.expectScene(scene);
+    }
+    await errorPage.expectNoScriptErrors();
+  });
+
   test('unknown types fall back to generic', async ({ errorPage }) => {
     await errorPage.open('unknownType');
 

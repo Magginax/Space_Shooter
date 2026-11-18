@@ -35,13 +35,15 @@ const ERROR_TYPE_FOR_STATUS = {
   404: 'notFound',
   409: 'scoreConflict',
   429: 'rateLimited',
+  500: 'serverError',
 };
 
 /**
  * Address of the error page for an HTTP status. Status 0 (request never got
- * an answer) and 5xx show `offlineType`; anything else unknown shows "generic".
+ * an answer) and 5xx other than 500 show `offlineType`; anything else unknown
+ * shows "generic".
  */
 export function errorUrl(basePath, status, offlineType = 'offline') {
-  const type = status === 0 || status >= 500 ? offlineType : (ERROR_TYPE_FOR_STATUS[status] ?? 'generic');
+  const type = ERROR_TYPE_FOR_STATUS[status] ?? (status === 0 || status >= 500 ? offlineType : 'generic');
   return `${basePath}views/error.html?type=${type}`;
 }

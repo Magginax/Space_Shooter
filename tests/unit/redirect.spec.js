@@ -27,7 +27,7 @@ test.describe('redirect after login', () => {
   });
 
   test('errorUrl picks the error page type for each HTTP status', () => {
-    const types = { 400: 'scoreRejected', 401: 'sessionExpired', 403: 'forbidden', 404: 'notFound', 409: 'scoreConflict', 429: 'rateLimited', 418: 'generic', 0: 'offline', 500: 'offline', 503: 'offline' };
+    const types = { 400: 'scoreRejected', 401: 'sessionExpired', 403: 'forbidden', 404: 'notFound', 409: 'scoreConflict', 429: 'rateLimited', 418: 'generic', 0: 'offline', 500: 'serverError', 502: 'offline', 503: 'offline' };
     for (const [status, type] of Object.entries(types)) {
       expect(errorUrl('/space/', Number(status)), status).toBe(`/space/views/error.html?type=${type}`);
     }

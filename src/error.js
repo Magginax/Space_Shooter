@@ -42,6 +42,13 @@ const ERROR_TYPES = {
     message: "This result could not be saved. It may have already been transmitted.",
     actionText: "RETURN TO BASE",
   },
+  serverError: {
+    code: "500",
+    title: "Core Malfunction - Space_Shooter",
+    message: "The onboard computer crashed. Try again in a moment.",
+    actionText: "RETURN TO BASE",
+    retry: true,
+  },
   leaderboardOffline: {
     code: "503",
     title: "Leaderboard Offline - Space_Shooter",
