@@ -99,7 +99,7 @@ const TINY_FONT = {
 };
 
 /** Always the same "random" number 0..1 for the same n, so the skyline does not flicker. */
-const hash = (n) => {
+export const hash = (n) => {
   const s = Math.sin(n * 127.1) * 43758.5453;
   return s - Math.floor(s);
 };
@@ -536,18 +536,22 @@ export class LcdScene {
     return frames[Math.floor(this.time / seconds) % frames.length];
   }
 
-  render() {
+  /** Starts a frame: fades the last one (the LCD smear) and picks up the ink. */
+  erase() {
     const { ctx, canvas } = this;
-    const { width, height } = canvas;
-
     // The canvas is transparent: the LCD colour comes from CSS. "destination-out"
     // erases, here only partly, which leaves the LCD smear behind moving things.
     ctx.globalCompositeOperation = 'destination-out';
     ctx.globalAlpha = this.reducedMotion ? 1 : FADE_PER_FRAME;
-    ctx.fillRect(0, 0, width, height);
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
     ctx.fillStyle = INK;
+  }
+
+  render() {
+    const { ctx } = this;
+    this.erase();
 
     // Back to front: far background, then the action, then the HUD on top.
     this.renderPlanet();

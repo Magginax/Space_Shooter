@@ -248,6 +248,15 @@ body.handheld {
   gap: 12px;
   text-align: center;
 }
+/* The error panel has no mode slots: the window covers the whole panel instead of
+   taking grid rows 1-3, which pushed the text out below an empty frame. */
+.error-panel::before,
+.error-panel::after {
+  position: absolute;
+  grid-area: auto; /* otherwise the grid area, not the panel, is the box it fills */
+  inset: 0;
+  margin: 0;
+}
 
 .eyebrow {
   margin: 0;

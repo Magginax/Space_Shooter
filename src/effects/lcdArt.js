@@ -199,6 +199,8 @@ const FONT = {
   Z: ['###', '..#', '.#.', '#..', '###'],
   ' ': ['...', '...', '...', '...', '...'],
   '.': ['...', '...', '...', '...', '.#.'],
+  '?': ['###', '..#', '.##', '...', '.#.'],
+  '!': ['.#.', '.#.', '.#.', '...', '.#.'],
 };
 const FONT_W = 3;
 const FONT_GAP = 1;
@@ -226,13 +228,13 @@ export function drawText(ctx, text, left, top) {
   }
 }
 
-/** `value` in 7-segment digits whose right edge is at `right`. */
+/** `value` in 7-segment digits whose right edge is at `right`. A space shows only the ghost segments. */
 export function drawNumber(ctx, value, digits, right, top) {
   const text = String(value).padStart(digits, '0').slice(-digits);
   [...text].forEach((char, i) => {
     const left = right - (digits - i) * 7 + 2;
     for (const [segment, [x, y, w, h]] of Object.entries(SEGMENT_RECTS)) {
-      ctx.globalAlpha = DIGIT_SEGMENTS[char].includes(segment) ? 1 : GHOST_ALPHA;
+      ctx.globalAlpha = (DIGIT_SEGMENTS[char] ?? '').includes(segment) ? 1 : GHOST_ALPHA;
       ctx.fillRect(left + x, top + y, w, h);
     }
   });
