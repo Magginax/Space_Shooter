@@ -138,27 +138,8 @@ a { color: var(--cyan); }
   color: var(--cyan);
   font-size: clamp(0.6rem, 2.6vw, 0.85rem);
 }
-.board[data-state='error'] .status { color: var(--magenta); }
 .board[data-state='offline'] .status { color: var(--dim); }
 
-.retry {
-  margin-bottom: 12px;
-  padding: 12px 20px;
-  border: 0;
-  border-radius: 0;
-  background: var(--yellow);
-  color: var(--bg);
-  font: inherit;
-  font-size: 0.75rem;
-  box-shadow: 4px 4px 0 var(--magenta);
-  cursor: pointer;
-}
-/* "Pressed" button: it moves onto its shadow. */
-.retry:active {
-  transform: translate(4px, 4px);
-  box-shadow: none;
-}
-.retry:focus-visible,
 .back-link:focus-visible {
   outline: 3px solid var(--yellow);
   outline-offset: 4px;

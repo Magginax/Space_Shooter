@@ -26,3 +26,22 @@ export function safeReturnPath(next, origin) {
 export function loginUrl(basePath, returnPath) {
   return `${basePath}views/login.html?next=${encodeURIComponent(returnPath)}`;
 }
+
+// HTTP status from Supabase -> error type in views/error.html (src/error.js).
+const ERROR_TYPE_FOR_STATUS = {
+  400: 'scoreRejected',
+  401: 'sessionExpired',
+  403: 'forbidden',
+  404: 'notFound',
+  409: 'scoreConflict',
+  429: 'rateLimited',
+};
+
+/**
+ * Address of the error page for an HTTP status. Status 0 (request never got
+ * an answer) and 5xx show `offlineType`; anything else unknown shows "generic".
+ */
+export function errorUrl(basePath, status, offlineType = 'offline') {
+  const type = status === 0 || status >= 500 ? offlineType : (ERROR_TYPE_FOR_STATUS[status] ?? 'generic');
+  return `${basePath}views/error.html?type=${type}`;
+}

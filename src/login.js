@@ -1,7 +1,7 @@
 import './styles/login.css';
 import { auth, isAuthConfigured, playAsGuest, leaveGuestMode } from './services/account.js';
 import { validateCredentials, validateUsername, validatePassword } from './services/auth.js';
-import { safeReturnPath } from './services/redirect.js';
+import { errorUrl, safeReturnPath } from './services/redirect.js';
 import { LcdScene } from './effects/LcdScene.js';
 
 const panel = document.querySelector('[data-testid="login"]');
@@ -116,6 +116,11 @@ async function run(button, loadingText, action) {
     await action();
   } catch (error) {
     console.error(error);
+    // Too many attempts or the server is down: the form cannot help, show the error page.
+    if (error.status === 0 || error.status === 429 || error.status >= 500) {
+      location.assign(errorUrl(import.meta.env.BASE_URL, error.status));
+      return;
+    }
     setState('error', error.message);
     if (error.code === 'invalid_credentials') loseLife();
   } finally {

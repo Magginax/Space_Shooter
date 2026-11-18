@@ -10,7 +10,8 @@
     "test": "playwright test",
     "test:db": "playwright test --config=playwright.db.config.js",
     "test:ui": "playwright test --ui",
-    "test:report": "playwright show-report"
+    "test:report": "playwright show-report",
+    "error-preview": "node scripts/error-preview.js"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

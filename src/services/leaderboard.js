@@ -51,21 +51,22 @@ export function createLeaderboard({ url, key, fetch, client } = {}) {
   return {
     /** Best scores for one game, highest first. Ties: the earlier score wins. */
     async getTopScores(game, limit = 10) {
-      const { data, error } = await supabase
+      const { data, error, status } = await supabase
         .from('scores')
         .select('nickname, score, created_at')
         .eq('game', game)
         .order('score', { ascending: false })
         .order('created_at', { ascending: true })
         .limit(limit);
-      if (error) throw new Error(`Could not load scores: ${error.message}`);
+      if (error) throw Object.assign(new Error(`Could not load scores: ${error.message}`), { status });
       return data;
     },
 
     async submitScore({ game, nickname, score }) {
       const row = validateScore({ game, nickname, score });
-      const { error } = await supabase.from('scores').insert(row);
-      if (error) throw new Error(`Could not submit score: ${error.message}`);
+      const { error, status } = await supabase.from('scores').insert(row);
+      // `status` (HTTP) lets the page pick the matching error page.
+      if (error) throw Object.assign(new Error(`Could not submit score: ${error.message}`), { status });
     },
   };
 }

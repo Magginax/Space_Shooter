@@ -2,6 +2,7 @@ import { test as base } from '@playwright/test';
 import { FakeSupabase } from './support/FakeSupabase.js';
 import { ErrorPage } from './pages/ErrorPage.js';
 import { HomePage } from './pages/HomePage.js';
+import { LeaderboardPage } from './pages/LeaderboardPage.js';
 import { LoginPage } from './pages/LoginPage.js';
 
 export { PASSWORD } from './support/FakeSupabase.js';
@@ -31,6 +32,9 @@ export const test = base.extend({
   },
   homePage: async ({ page }, use) => {
     await use(new HomePage(page));
+  },
+  leaderboardPage: async ({ page }, use) => {
+    await use(new LeaderboardPage(page));
   },
   loginPage: async ({ page }, use) => {
     await use(new LoginPage(page));
