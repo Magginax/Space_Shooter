@@ -116,7 +116,7 @@ There is no "forgot password" (no real e-mail): an admin resets it in
 **Authentication → Users**. Logged-in players change their password under
 **PROFILE** on the login page.
 
-The game only starts for logged-in players or guests (**PLAY AS GUEST**).
+The game only starts for logged-in players or guests (**Guest** mode on the login page).
 Guests can play, but only logged-in players may save scores: that rule is in
 the database, because the check in the browser can be bypassed. A direct link
 to `#game` sends visitors to the login page and back to the game afterwards.
