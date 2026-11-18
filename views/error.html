@@ -8,15 +8,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
-    <title>Game - Space_Shooter</title>
+    <title>Error - Space_Shooter</title>
 </head>
 
 <body class="handheld">
     <main class="desk">
         <a class="back-link" href="../">&lt; BACK</a>
 
-        <!-- The handheld console. Only the form inside the screen is interactive;
-           the rest (LED, speaker, buttons) is decoration. -->
         <div class="device">
             <div class="device-top" aria-hidden="true">
                 <span class="led"></span>
@@ -26,9 +24,20 @@
 
             <div class="bezel">
                 <div class="screen" data-testid="screen">
-                    <h1 id="error-code">404</h1>
-                    <p id="error-message">Sector not found or transmission lost in deep space.</p>
-                    <a href="/" class="start">Return to Base</a>
+                    <div class="lcd">
+                        <canvas data-testid="lcd-canvas" aria-hidden="true"></canvas>
+                    </div>
+
+                    <section class="panel error-panel" data-testid="error-panel" aria-live="polite">
+                        <p class="eyebrow">SYSTEM ALERT</p>
+                        <h1 id="error-code">404</h1>
+                        <p id="error-message">Sector not found or transmission lost in deep space.</p>
+
+                        <div class="error-actions">
+                            <a href="/" class="start" data-testid="error-home-link">RETURN TO BASE</a>
+                            <button type="button" class="start ghost" data-testid="retry-button" hidden>TRY AGAIN</button>
+                        </div>
+                    </section>
 
                     <div class="glare" aria-hidden="true"></div>
                 </div>
