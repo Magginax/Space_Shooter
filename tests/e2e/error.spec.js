@@ -10,6 +10,7 @@ test.describe('Error page', () => {
     await errorPage.expectMessage('Pilot authorization has expired. Log in to continue the mission.');
     await errorPage.expectAction('LOG IN');
     await errorPage.expectRetryVisible(false);
+    await errorPage.expectScene('sessionExpired');
   });
 
   test('shows an offline state with retry', async ({ errorPage }) => {
@@ -17,7 +18,7 @@ test.describe('Error page', () => {
 
     await errorPage.expectErrorType('offline');
     await errorPage.expectCode('503');
-    await errorPage.expectAction('TRY AGAIN');
+    await errorPage.expectAction('RETURN TO BASE');
     await errorPage.expectRetryVisible(true);
   });
 
@@ -37,6 +38,17 @@ test.describe('Error page', () => {
     await errorPage.expectErrorType('unknownType');
     await errorPage.expectCode('ERROR');
     await errorPage.expectMessage('A system fault interrupted the mission.');
+    await errorPage.expectScene('generic');
+  });
+
+  test('missing pages show 404 with a way home', async ({ errorPage }) => {
+    await errorPage.openMissingPage();
+
+    await errorPage.expectHttpStatus(404);
+    await errorPage.expectErrorType('notFound');
+    await errorPage.expectCode('404');
+    await errorPage.expectLinkTo('/');
+    await errorPage.expectScene('notFound');
   });
 
   test('code and message query values override defaults', async ({ errorPage }) => {
