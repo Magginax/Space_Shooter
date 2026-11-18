@@ -11,6 +11,14 @@ export class ErrorPage {
     this.homeLink = page.getByTestId('error-home-link');
     this.retryButton = page.getByTestId('retry-button');
     this.canvas = page.getByTestId('lcd-canvas');
+    this.scriptErrors = [];
+    page.on('pageerror', (error) => this.scriptErrors.push(error.message));
+  }
+
+  /** The scene draws without throwing (a crash only shows up in the console). */
+  async expectNoScriptErrors() {
+    await this.page.waitForTimeout(300);
+    expect(this.scriptErrors).toEqual([]);
   }
 
   async open(type) {

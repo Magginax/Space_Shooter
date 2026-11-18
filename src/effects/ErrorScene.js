@@ -1,19 +1,21 @@
 import { clamp, randomBetween } from '../engine/index.js';
 import { LcdScene, hash } from './LcdScene.js';
-import { FONT_H, SHIP, SKULL, drawNumber, drawText, spriteBox, textWidth } from './lcdArt.js';
+import { FONT_H, GHOST_ALPHA, SHIP, SKULL, drawNumber, drawText, textWidth } from './lcdArt.js';
+import { MOTHERSHIP } from './mothership.js';
 
 // Seconds into each scene's loop shown as the single still frame for reduced
 // motion. The keys are also the error types that have a scene of their own.
 const STILL = {
-  notFound: 2,
-  forbidden: 4.2,
-  sessionExpired: 1,
-  loginRequired: 3.4,
-  scoreRejected: 3.4,
-  scoreConflict: 2.5,
-  rateLimited: 1,
+  notFound: 2.6,
+  forbidden: 3.1,
+  sessionExpired: 4.25,
+  loginRequired: 3.43,
+  scoreRejected: 4.58,
+  scoreConflict: 3.6,
+  rateLimited: 6.6,
   offline: 1.2,
   leaderboardOffline: 1,
+  serverError: 1.9,
   maintenance: 1,
 };
 
@@ -23,6 +25,8 @@ const STILL = {
 const turn = (sprite) => [...sprite[0]].map((_, x) => sprite.map((row) => row[x]).reverse().join(''));
 /** The sprite at 0°, 90°, 180° and 270°, for things that tumble. */
 const turns = (sprite) => [sprite, turn(sprite), turn(turn(sprite)), turn(turn(turn(sprite)))];
+/** The sprite mirrored left to right. */
+const flip = (sprite) => sprite.map((row) => [...row].reverse().join(''));
 const mix = (a, b, u) => a + (b - a) * u;
 const mixPoint = (a, b, u) => ({ x: mix(a.x, b.x, u), y: mix(a.y, b.y, u) });
 /** 0 before `from`, 1 after `to`, a smooth ramp in between. */
@@ -39,7 +43,6 @@ const bezier = (a, b, c, u) => ({
 // --- Pixel art (lcdArt.js rules; 'o' = a cleared, light pixel) ------------------
 
 const SHIP_TURNS = turns(SHIP);
-const SHIP_UP = SHIP_TURNS[3];
 
 // The 404 scene is drawn like the boss on the login screen: shapes are tested
 // pixel by pixel, so they can turn slowly. These give the distance to a shape's
@@ -80,6 +83,8 @@ const segmentDist = (x, y, [ax, ay], [bx, by], r) => {
 const POST = ['#.#.#', '.###.', '..#..', '..#..', '..#..', '..#..', '..#..', '.###.'];
 const BUD = ['.###.', '##.##', '.###.', '..#..', '#.#.#', '.###.', '..#..', '..#..'];
 const TALL_BUD = ['.###.', '##.##', '.###.', '..#..', '..#..', '#.#..', '.##.#', '..##.', '..#..', '..#..', '..#..', '..#..'];
+// A burrow critter with feelers; it lives behind the hill.
+const CRITTER = ['.#...#.', '..#.#..', '.#####.', '##.#.##', '#######', '#.#.#.#'];
 
 // 401
 // Helmet with the visor shut (asleep); body sitting, legs hanging over the crate.
@@ -102,35 +107,114 @@ const SNAIL = [
   ['..###...#', '.#...#.#.', '#.##.#.#.', '#..#.####', '#########'],
   ['..###..#.', '.#...#.#.', '#.##.#.#.', '#..#.####', '#########'],
 ];
-const DRONE = [
-  ['##.....##', '.#.###.#.', '..#####..', '...#.#...'],
-  ['.##...##.', '.#.###.#.', '..#####..', '...#.#...'],
-];
 
 // 400
-const PAGE_TURNS = turns(['#####..', '#...##.', '#...###', '#.....#', '#.###.#', '#.....#', '#.##..#', '#.....#', '#######']);
+// 400: the inspection booth, seen from our side of the desk. One loop in seconds,
+// and the moment the stamp lands: the dialog appears just after it (login.css).
+const BOOTH = { loop: 9, stamp: 3.75 };
+// The pilot at the window from the chest up. 'o' is the light visor and suit;
+// the eyes are drawn on the visor (BOOTH_EYES), so the face can change.
+const PILOT_BUST = [
+  '.......#######.......',
+  '.....##ooooooo##.....',
+  '....#ooooooooooo#....',
+  '...#ooooooooooooo#...',
+  '..#ooooooooooooooo#..',
+  '..#oo###########oo#..',
+  '.#oo#ooooooooooo#oo#.',
+  '.#oo#ooooooooooo#oo#.',
+  '.#oo#ooooooooooo#oo#.',
+  '.#ooo###########ooo#.',
+  '..#ooooooooooooooo#..',
+  '..#ooooo#####ooooo#..',
+  '...##ooooooooooo##...',
+  '.....###########.....',
+  '.......#ooooo#.......',
+  '..######ooooo######..',
+  '.#oooooo#ooo#oooooo#.',
+  '#oooooooo#o#oooooooo#',
+  '#o##ooooo#o#ooooo##o#',
+  '#o##oooooo#oooooo##o#',
+  '#ooooooooooooooooooo#',
+  '#ooooooooooooooooooo#',
+];
+const BOOTH_EYES = {
+  calm: [[7, 7], [8, 7], [12, 7], [13, 7]],
+  hopeful: [[7, 7], [8, 6], [9, 7], [11, 7], [12, 6], [13, 7]],
+  nervous: [[6, 7], [7, 7], [11, 7], [12, 7]],
+  shocked: [[7, 6], [8, 6], [7, 7], [8, 7], [12, 6], [13, 6], [12, 7], [13, 7]],
+  sad: [[7, 8], [8, 7], [12, 7], [13, 8]],
+};
+const TINY_PILOT = ['###', '#.#', '###', '.#.', '###', '#.#'];
+const FIST = ['..#####..', '.#o#o#o#.', '#ooooooo#', '#ooooooo##', '.########'];
+const GLOVE = ['.###.', '#ooo#', '#ooo#', '.###.'];
 
-// 429
-const ENVELOPE = ['#######', '##...##', '#.#.#.#', '#..#..#', '#######'];
-const FLAKE = [['#.#', '.#.', '#.#'], ['.#.', '###', '.#.']];
-const FAN = [['..#..', '..#..', '#####', '..#..', '..#..'], ['#...#', '.#.#.', '..#..', '.#.#.', '#...#']];
+// 409 and 500: the 401 pilot standing up. Arms are drawn in code, so they can point anywhere.
+const PILOT_TORSO = ['..###..', '.#####.', '.#####.', '.##.##.', '..###..'];
+const PILOT_LEGS = {
+  wide: ['..#.#..', '.#...#.', '.#...#.', '#.....#', '##...##'],
+  step: ['..#.#...', '..#..#..', '.#....#.', '.#....#.', '##....##'],
+  straight: ['..#.#..', '..#.#..', '..#.#..', '..#.#..', '.##.##.'],
+};
+/** Head, torso and legs as one sprite facing right, 8 wide; `lean` 1 puts the head forward. */
+const pilotPose = (legs, lean) => [
+  ...PILOT_HEAD.map((row) => ('.'.repeat(lean) + row).padEnd(8, '.')),
+  ...[...PILOT_TORSO, ...PILOT_LEGS[legs]].map((row) => row.padEnd(8, '.')),
+];
+
+// 409: seconds in one round of the argument.
+const CONFLICT_LOOP = 8;
+
+// 429: the ships in the queue, facing right, in their four turns.
+const FIGHTER = ['##......', '###.....', '.#####..', '########', '.#####..', '###.....', '##......'];
+const HAULER = ['.##########..', '#..#..#..###.', '#############', '#..#..#..####', '#############', '#..#..#..###.', '.##########..'];
+const POD = ['.##..', '####.', '#.###', '####.', '.##..'];
+const QUEUE = [HAULER, FIGHTER, POD, FIGHTER, POD, HAULER, FIGHTER, POD].map(turns);
+// Seconds in one round of the queue; the ship (from the back) that sleeps through it.
+const RATE_LOOP = 8;
+const SLEEPER = 7;
 
 // 503 offline
 const ANTENNA_ICON = ['#.#.#', '.###.', '..#..', '..#..', '..#..', '..#..'];
 const PANEL_TURNS = turns(['#########', '#.#.#.#.#', '#########', '#.#.#.#.#', '#########']);
 
-// 503 leaderboard
-const TROPHY_DOWN = turn(['#######', '#.###.#', '#.###.#', '.#####.', '..###..', '...#...', '...#...', '..###..', '.#####.']);
-const TUMBLEWEED_TURNS = turns(['..###..', '.#.#.#.', '#.#.#.#', '##.#.##', '#.#.#.#', '.#.#.#.', '..###..']);
-const PLUG = ['#.##', '.###', '#.##'];
+// 503 leaderboard: chunky flames (solid core, dithered tips), the robot, flying data.
+const FLAMES = [
+  ['....:....', '...:.:...', '....#:...', '...:#:.:.', '..:##:...', '.:.###:..', '..:####:.', '.:#####:.', ':#######:', '.#######.', '..#####..'],
+  ['.....:...', '....:.:..', '...:#....', '.:.:#:...', '...:##:..', '..:###.:.', '.:####:..', '.:#####:.', ':#######:', '.#######.', '..#####..'],
+  ['...:.....', '..:.:.:..', '...:#:...', '..:##:...', '..:###:..', '.:.###:..', '.:####:..', '.:#####:.', ':#######:', '.#######.', '..#####..'],
+];
+// The robot faces right: fire helmet, a box head with one eye, arms forward. Knocked over it
+// lies on its back, legs up, then sits, legs out.
+const ROBOT_HELMET = ['...##..', '..####.', '#######'];
+const ROBOT_BODY = ['..#.##.', '..####.', '.######', '.####..', '.#..#..'];
+const ROBOT_LYING = ['......#.#', '.###..#.#', '#.#######', '#########'];
+const ROBOT_SAT = ['..#.##.', '..####.', '.####..', '.######'];
+const HELMET_TURNS = turns(ROBOT_HELMET);
+const HYDRANT = ['..#..', '.###.', '#####', '.###.', '.###.', '#####'];
+// A disk platter spinning (face on, then edge on) and a data block turning.
+const DISK_SPIN = [['.###.', '#...#', '#.#.#', '#...#', '.###.'], ['.###.', '#####', '.###.']];
+const BLOCK_SPIN = [['##', '##'], ['.#.', '###', '.#.']];
+const FIRE_LOOP = 8;
+
+// 500: seconds in one crash; a gear in two turns; the wrench upright (jaw up) and swung level.
+const CRASH_LOOP = 7;
+const GEAR = [
+  ['...#...', '.#####.', '.#...#.', '##.#.##', '.#...#.', '.#####.', '...#...'],
+  ['..#.#..', '.#####.', '##...##', '.#.#.#.', '##...##', '.#####.', '..#.#..'],
+];
+const SCREW_TURNS = turns(['###', '.#.', '.#.']);
+const WRENCH = ['#.#', '###', '.#.', '.#.'];
+const WRENCH_LEVEL = ['..##', '###.', '..##'];
 
 // 503 maintenance
 const WORKER = ['.###..', '#..##.', '#..##.', '.###..', '..#...', '.###..', '.###..', '.#.#..', '.#.#..', '##.##.'];
 const TOOLBOX = ['..####..', '..#..#..', '########', '#..##..#', '########'];
 const CONE = ['..#..', '.#.#.', '.###.', '#...#', '#####'];
 
-// 403: one loop of the boss swatting the ship (seconds).
-const SWAT = { loop: 7, arrive: 2.6, windUp: 3.1, hit: 3.25 };
+// 403: points on the mothership sprite: the core and the two turret orbs.
+const MOTHER_CORE = { x: 36, y: 18 };
+const MOTHER_TURRETS = [{ x: 16, y: 35 }, { x: 57, y: 35 }];
 
 /**
  * The animated LCD behind the error page: one small scene per error type, in
@@ -150,24 +234,16 @@ export class ErrorScene extends LcdScene {
     this.scene = Object.hasOwn(STILL, type) ? type : null;
     this.prevTime = 0;
     canvas.dataset.scene = this.scene ?? 'generic';
-    if (this.scene && this.reducedMotion) this.time = STILL[this.scene];
+    if (this.scene && this.reducedMotion) {
+      // Play the last moments before the still frame, so its sparks are in the picture.
+      this.time = STILL[this.scene] - 0.4;
+      for (let i = 0; i < 24; i++) this.update(1 / 60);
+    }
   }
 
   // The scenes have no HUD, so they may use the whole height.
   top() {
     return this.scene ? 2 : super.top();
-  }
-
-  // In the 403 scene the login boss guards the right side and watches the intruder.
-  bossCenter() {
-    if (this.scene !== 'forbidden') return super.bossCenter();
-    return { x: this.canvas.width - 20, y: Math.round(this.groundY() * 0.42) };
-  }
-
-  shipBox() {
-    if (this.scene !== 'forbidden') return super.shipBox();
-    const ship = this.intruder();
-    return spriteBox(ship.sprite, ship.x, ship.y);
   }
 
   update(dt) {
@@ -225,6 +301,53 @@ export class ErrorScene extends LcdScene {
       for (let dx = 0; dx < row.length; dx++) if (row[dx] === '#') this.ctx.clearRect(left + dx - 1, top + dy - 1, 3, 3);
     });
     this.drawSprite(sprite, left, top);
+  }
+
+  /** A shaded sprite: '#' ink, ':' dither, '+' ghost, 'o' light; all but '.' hide what is behind. `scale` makes chunky pixels. */
+  shaded(sprite, x, y, scale = 1) {
+    const { ctx } = this;
+    const left = Math.round(x);
+    const top = Math.round(y);
+    sprite.forEach((row, dy) => {
+      for (let dx = 0; dx < row.length; dx++) {
+        const ch = row[dx];
+        if (ch === '.') continue;
+        ctx.clearRect(left + dx * scale, top + dy * scale, scale, scale);
+        ctx.globalAlpha = ch === '+' ? 0.3 : 1;
+        if (ch === '#' || ch === '+' || (ch === ':' && (dx + dy) % 2 === 0)) ctx.fillRect(left + dx * scale, top + dy * scale, scale, scale);
+      }
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  /** `sprite` turned by `angle` (radians, clockwise) around its middle at (cx, cy), with a light rim. */
+  tilted(sprite, cx, cy, angle) {
+    const w = sprite[0].length;
+    const h = sprite.length;
+    const ink = (x, y) => sprite[Math.round(y + (h - 1) / 2)]?.[Math.round(x + (w - 1) / 2)] === '#';
+    this.shape(cx, cy, angle, Math.ceil(Math.max(w, h) / 2) + 2, (x, y) => {
+      if (ink(x, y)) return 'ink';
+      if (ink(x + 1, y) || ink(x - 1, y) || ink(x, y + 1) || ink(x, y - 1)) return 'clear';
+      return null;
+    });
+  }
+
+  /** A straight bar from `a` to `b`, `r` pixels out from its centre line; `clear` paints light. */
+  bar(a, b, r, clear = false) {
+    const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y)));
+    for (let i = 0; i <= steps; i++) {
+      const x = Math.round(mix(a.x, b.x, i / steps)) - r;
+      const y = Math.round(mix(a.y, b.y, i / steps)) - r;
+      if (clear) this.ctx.clearRect(x, y, r * 2 + 1, r * 2 + 1);
+      else this.ctx.fillRect(x, y, r * 2 + 1, r * 2 + 1);
+    }
+  }
+
+  /** Checkerboard ink on the pixels of the box where `inside(x, y)` holds. */
+  ditherWhere(x0, y0, x1, y1, inside) {
+    for (let y = Math.round(y0); y <= y1; y++) {
+      for (let x = Math.round(x0); x <= x1; x++) if (((x + y) & 1) === 0 && inside(x, y)) this.ctx.fillRect(x, y, 1, 1);
+    }
   }
 
   /**
@@ -374,10 +497,9 @@ export class ErrorScene extends LcdScene {
     this.galaxy(Math.round(W * 0.18), Math.round(H * 0.28));
 
     // Rocks floating about, turning slowly.
-    this.asteroid(W * 0.87, H * 0.17 + Math.sin(t * 0.5) * 1.5, 6.5, -t * 0.1, 2);
-    this.pebble(W * 0.2, H * 0.6 + Math.sin(t * 0.7), 0.4 + Math.sin(t * 0.5) * 0.3);
-    this.pebble(W * 0.75, H * 0.56 + Math.sin(t * 0.6 + 1), -0.5 + Math.sin(t * 0.4) * 0.3);
-    for (const [fx, fy] of [[0.94, 0.3], [0.68, 0.42], [0.64, 0.8]]) {
+    this.asteroid(W * 0.66, H * 0.17 + Math.sin(t * 0.5) * 1.5, 6.5, -t * 0.1, 2);
+    this.pebble(W * 0.2, H * 0.45 + Math.sin(t * 0.7), 0.4 + Math.sin(t * 0.5) * 0.3);
+    for (const [fx, fy] of [[0.97, 0.12], [0.68, 0.42]]) {
       this.shape(W * fx, H * fy + Math.sin(t + fx * 9), 0, 3, (x, y) => {
         const d = Math.hypot(x, y) - 2.4;
         return d > 0 ? null : d > -1 ? 'ink' : 'clear';
@@ -385,18 +507,55 @@ export class ErrorScene extends LcdScene {
     }
 
     // Smoke rising behind the wreck, the hills burying its tail, the big rock in front of it all.
+    // 8 s loop: the wreck calls home, a critter peeks out at the noise, the wreck bangs, it ducks.
+    const p = t % 8;
     const wreck = this.wreckPose();
-    this.smoke(placer(wreck.x, wreck.y, wreck.angle)(6, -4.5));
+    const at = placer(wreck.x, wreck.y, wreck.angle);
+    this.smoke(at(6, -4.5));
     this.wreck(wreck);
+    this.sos(at(-1, -12), p);
+    this.critter(Math.round(W * 0.6), p);
     this.hills();
-    this.asteroid(W * 0.13, H * 0.75 + Math.sin(t * 0.4) * 1.5, 9, t * 0.08, 5);
+    this.asteroid(W * 0.11, H * 0.71 + Math.sin(t * 0.4) * 1.5, 8, t * 0.08, 5);
   }
 
   notFoundTick() {
-    if (this.every(1.7)) {
-      const wreck = this.wreckPose();
-      const hole = placer(wreck.x, wreck.y, wreck.angle)(6, -3.5);
-      this.sparks(hole.x, hole.y, 4, 14, 40);
+    const wreck = this.wreckPose();
+    const hole = placer(wreck.x, wreck.y, wreck.angle)(6, -3.5);
+    if (this.every(8, 4.4)) {
+      this.sparks(hole.x, hole.y, 14, 30, 50);
+      this.shockWaves.push({ x: hole.x, y: hole.y, life: 0.3 });
+    } else if (this.every(1.6)) {
+      this.sparks(hole.x, hole.y, 3, 14, 40);
+    }
+  }
+
+  /** Three radio rings from the bent antenna; they break up and fade: the call is lost. */
+  sos(tip, p) {
+    const { ctx } = this;
+    for (const start of [0.2, 0.8, 1.4]) {
+      const u = (p - start) / 1.6;
+      if (u < 0 || u > 1) continue;
+      ctx.globalAlpha = 1 - u * 0.5;
+      this.ring(tip.x, tip.y, 2 + u * 10, u > 0.6 ? 2 : 1, Math.PI * 0.95, Math.PI * 1.55);
+      if (u < 0.15) {
+        ctx.fillRect(Math.round(tip.x) - 1, Math.round(tip.y), 3, 1);
+        ctx.fillRect(Math.round(tip.x), Math.round(tip.y) - 1, 1, 3);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /** The critter rises behind the ridge (hills() hides its lower half), asks "?", ducks at the bang, peeks again. */
+  critter(x, p) {
+    const { ctx } = this;
+    const ridge = Math.round(this.groundY() - this.ridge(x + 3));
+    const rise = 6 * (ease(p, 1.6, 2.2) - ease(p, 4.5, 4.7)) + 4 * (ease(p, 6.2, 6.6) - ease(p, 7.4, 7.8));
+    this.drawSprite(CRITTER, x, ridge - Math.round(rise));
+    const mark = p >= 2.4 && p < 4.4 ? '?' : p >= 4.4 && p < 4.9 ? '!' : '';
+    if (mark) {
+      ctx.clearRect(x + 1, ridge - 14, 5, 7);
+      drawText(ctx, mark, x + 2, ridge - 13);
     }
   }
 
@@ -502,6 +661,8 @@ export class ErrorScene extends LcdScene {
       );
       if (body > 0) return null;
       if (body > -1) return 'ink';
+      // Above the hull is only the fin; solid, so its thin outline does not read as a letter.
+      if (y < -5) return 'ink';
       // The hole the smoke comes out of: dark, with a ragged rim.
       const hole = ellipseDist(x, y, 6, -2.4, 2.2, 1.3) + hash(Math.round(x) * 2.1 + Math.round(y)) * 0.6;
       if (hole < 0) return sx % 2 || sy % 2 ? 'ink' : 'clear';
@@ -513,11 +674,16 @@ export class ErrorScene extends LcdScene {
       if (Math.abs(x - 1.5) < 0.5 || Math.abs(x + 11) < 0.5 || Math.abs(x - 12) < 0.5) return 'ink';
       return y > 2 && (sx + sy) % 2 === 0 ? 'ink' : 'clear';
     });
+    const at = placer(cx, cy, angle);
     if (this.time % 1.2 < 0.25) {
-      const tip = placer(cx, cy, angle)(21.5, 0);
+      const tip = at(21.5, 0);
       this.ctx.fillRect(Math.round(tip.x) - 1, Math.round(tip.y), 3, 1);
       this.ctx.fillRect(Math.round(tip.x), Math.round(tip.y) - 1, 1, 3);
     }
+    // The bent antenna on its back.
+    const [base, knee, tip] = [at(-3, -5), at(-3, -10), at(-1, -12)];
+    this.line(base.x, base.y, knee.x, knee.y);
+    this.line(knee.x, knee.y, tip.x, tip.y);
   }
 
   /** Two columns of soft, dithered smoke curling up from the wreck. */
@@ -584,129 +750,203 @@ export class ErrorScene extends LcdScene {
     }
   }
 
-  // --- 403 Forbidden: the boss swats the ship away from its door --------------------
+  // --- 403 Forbidden: the mothership's tractor beam pushes the ship back from its gate --
+
+  /** Top-left of the mothership at the right edge, bobbing slowly. */
+  mother() {
+    return { x: this.canvas.width - MOTHERSHIP[0].length - 1, y: 1 + Math.round(Math.sin(this.time * 1.3)) };
+  }
+
+  /**
+   * Where the left and right turret beams hit the ground in front of the gate.
+   * The right beam lands further out, so it crosses the left one low down
+   * instead of running along the right claw.
+   */
+  impacts() {
+    const { x } = this.mother();
+    const G = this.groundY();
+    return [{ x: x + 10, y: G }, { x: x - 6, y: G }];
+  }
+
+  /** Centre of the intruder: it creeps forward, then the beam shoves it back (4 s loop). */
+  pushedShip() {
+    const p = this.time % 4;
+    const back = p < 3 ? 1 - ease(p, 0.2, 3) : ease(p, 3, 3.3);
+    const shoved = p >= 3 && p < 3.7;
+    return { x: Math.round(this.canvas.width * 0.17 + 8 * (1 - back)), y: 20 + (shoved ? Math.round(Math.sin(this.time * 40)) : 0), shoved };
+  }
 
   forbidden() {
-    const p = this.time % SWAT.loop;
-    this.renderPlanet();
+    const { ctx } = this;
+    const G = this.groundY();
+    const m = this.mother();
+    const ship = this.pushedShip();
     this.stars(26, 7);
     this.horizon();
-    this.keepOut();
-    this.renderBoss();
-    this.swatArm(p);
 
-    const ship = this.intruder();
-    this.drawSprite(ship.sprite, ship.x, ship.y);
-    if (ship.flying) this.flame(ship.x, ship.y);
-    if (ship.dizzy) {
-      // Stars circling over its head.
-      for (let k = 0; k < 3; k++) {
-        const a = this.time * 7 + k * 2.1;
-        this.px(ship.x + 5 + Math.cos(a) * 7, ship.y - 2 + Math.sin(a) * 2);
-      }
+    // The turret beams scorch a line on the ground that the ship can't cross.
+    const hits = this.impacts();
+    for (let x = hits[1].x; x <= hits[0].x; x += 2) this.px(x, G - 1);
+    this.gate(m.x + 22, G);
+    this.tractorBeam({ x: m.x + MOTHER_CORE.x, y: m.y + MOTHER_CORE.y }, ship);
+    this.shaded(MOTHERSHIP, m.x, m.y);
+    this.crossedClaws(m, G);
+    // Beams last, so nothing cuts them: from the glowing turret orb straight into the burst.
+    MOTHER_TURRETS.forEach((turret, i) => this.turretBeam({ x: m.x + turret.x, y: m.y + turret.y }, hits[i]));
+
+    // The ship tilted back, still thrusting, with motion lines and a "!".
+    this.tilted(SHIP, ship.x, ship.y, -0.35);
+    ctx.fillRect(ship.x - 7 - Math.floor(Math.random() * 3), ship.y + 3, 2, 1);
+    for (const [k, dy] of [-3, 0, 3].entries()) {
+      const length = (ship.shoved ? 8 : 4) + ((k + Math.floor(this.time * 8)) % 2);
+      ctx.clearRect(ship.x + 7, ship.y + dy - 1, length, 3);
+      ctx.fillRect(ship.x + 7, ship.y + dy, length, 1);
     }
-    const hit = this.swatPoint();
-    if (p >= SWAT.hit && p < SWAT.hit + 0.25) {
-      for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
-        this.line(hit.x + Math.cos(a) * 3, hit.y + Math.sin(a) * 3, hit.x + Math.cos(a) * 6, hit.y + Math.sin(a) * 6);
-      }
+    if (!ship.shoved || this.time % 0.2 < 0.12) {
+      ctx.clearRect(ship.x - 3, ship.y - 13, 5, 7);
+      drawText(ctx, '!', ship.x - 2, ship.y - 12);
     }
-    if (p >= SWAT.hit + 0.05 && p < 6.4) {
-      const text = 'ACCESS DENIED';
-      this.bubble(text, this.canvas.width - textWidth(text) - 6, 2, this.bossCenter().x - 6, 6);
+    this.transmission(m);
+  }
+
+  /**
+   * The mothership does not talk: its antenna spire sends ACCESS DENIED to a
+   * message display, where it is typed out letter by letter (6 s loop).
+   */
+  transmission(m) {
+    const { ctx } = this;
+    const t = this.time;
+    const text = 'ACCESS DENIED';
+    const p = t % 6;
+    const typed = clamp(Math.floor((p - 0.4) / 0.16), 0, text.length);
+    const sending = p >= 0.4 && typed < text.length;
+
+    // The display sits left of the claws: the text, then a block cursor.
+    const w = textWidth(text) + 8;
+    const box = { x: m.x + 6 - w, y: 0, w, h: FONT_H + 4 };
+    this.box(box.x, box.y, box.w, box.h);
+    const shown = p > 4.6 && p < 5.8 && t % 0.4 >= 0.25 ? '' : text.slice(0, typed);
+    drawText(ctx, shown, box.x + 2, box.y + 2);
+    if (sending || t % 0.8 < 0.4) ctx.fillRect(box.x + 2 + textWidth(text.slice(0, typed)) + (typed ? 1 : 0), box.y + 2, 3, FONT_H);
+
+    // The signal: a dotted line from the spire tip into the display, data running along it while sending.
+    const tip = { x: m.x + 30, y: m.y + 1 };
+    const end = { x: box.x + box.w, y: box.y + 4 };
+    const steps = Math.round(tip.x - end.x);
+    const run = Math.floor(t * 30);
+    for (let i = 0; i <= steps; i++) {
+      const dot = mixPoint(tip, end, i / steps);
+      if (sending ? (i + run) % 6 < 2 : i % 3 === 0) this.px(dot.x, dot.y);
+    }
+    if (sending) {
+      for (let k = 0; k < 2; k++) this.ring(tip.x, tip.y, 2 + ((t * 10 + k * 3) % 6), 1, Math.PI * 0.6, Math.PI * 1.4);
     }
   }
 
   forbiddenTick() {
-    this.boss.blink = this.time % 3.4 < 0.16 ? 1 : 0;
-    if (this.every(SWAT.loop, SWAT.hit)) {
-      const hit = this.swatPoint();
-      this.explode(hit.x, hit.y, 12);
-      this.shockWaves.push({ x: hit.x, y: hit.y, life: 0.35 });
+    if (this.every(0.25)) for (const hit of this.impacts()) this.sparks(hit.x, hit.y - 1, 3, 30, 120);
+    if (this.every(4, 3)) {
+      const ship = this.pushedShip();
+      this.shockWaves.push({ x: ship.x + 6, y: ship.y, life: 0.3 });
     }
   }
 
-  /** Where the ship stops in front of the boss (x of its left edge). */
-  swatStop() {
-    return Math.round(this.canvas.width * 0.56) - SHIP[0].length;
-  }
-
-  swatPoint() {
-    return { x: this.swatStop() + 9, y: 14 };
-  }
-
-  /** The ship in the 403 loop: flies in, waits, gets swatted and tumbles away. */
-  intruder() {
-    const p = this.time % SWAT.loop;
-    const stop = this.swatStop();
-    const y = 11;
-    if (p < SWAT.arrive) {
-      return { sprite: SHIP, x: mix(-14, stop, ease(p, 0, SWAT.arrive)), y: y + Math.round(Math.sin(this.time * 3)), flying: true };
-    }
-    if (p < SWAT.hit) return { sprite: SHIP, x: stop, y };
-    const u = (p - SWAT.hit) / 2.4;
-    return {
-      sprite: SHIP_TURNS[Math.floor(p * 10) % 4],
-      x: stop - u * (stop + 40),
-      y: y + 2 - Math.sin(Math.min(u, 1) * Math.PI) * 8,
-      dizzy: true,
-    };
-  }
-
-  /** The tentacle that guards the door: curls, winds up, strikes the ship, curls back. */
-  swatArm(p) {
-    const t = this.time;
-    const { x: cx, y: cy } = this.bossCenter();
-    const root = { x: cx - 10, y: cy - 8 };
-    const idle = { x: root.x - 8 + Math.sin(t * 2) * 2, y: root.y - 9 + Math.cos(t * 1.7) * 2 };
-    const wound = { x: root.x + 3, y: root.y - 17 };
-    const hit = this.swatPoint();
-    const after = { x: hit.x - 7, y: hit.y - 5 };
-    let tip = idle;
-    if (p >= SWAT.arrive && p < SWAT.windUp) tip = mixPoint(idle, wound, ease(p, SWAT.arrive, SWAT.windUp));
-    else if (p >= SWAT.windUp && p < SWAT.hit) tip = mixPoint(wound, hit, (p - SWAT.windUp) / (SWAT.hit - SWAT.windUp));
-    else if (p >= SWAT.hit && p < 3.6) tip = mixPoint(hit, after, ease(p, SWAT.hit, 3.6));
-    else if (p >= 3.6 && p < 4.6) tip = mixPoint(after, idle, ease(p, 3.6, 4.6));
-
-    // Thick at the root, suckers underneath, a club at the tip.
-    const bend = { x: (root.x + tip.x) / 2 + 3, y: Math.min(root.y, tip.y) - 7 };
-    let prev = root;
-    for (let i = 1; i <= 24; i++) {
-      const point = bezier(root, bend, tip, i / 24);
-      this.line(prev.x, prev.y, point.x, point.y);
-      if (i < 12) this.line(prev.x, prev.y + 1, point.x, point.y + 1);
-      if (i % 4 === 0) this.px(point.x, point.y + 2);
-      prev = point;
-    }
-    this.ctx.fillRect(Math.round(tip.x) - 1, Math.round(tip.y) - 1, 3, 3);
-  }
-
-  /** Barbed wire along the ground, a KEEP OUT sign and a skull on a pike. */
-  keepOut() {
-    const { ctx, canvas } = this;
+  /** A turret beam from the orb into its ground burst; bright pulses run down it. */
+  turretBeam(from, hit) {
+    const { ctx } = this;
     const G = this.groundY();
-    ctx.globalAlpha = 0.7;
-    for (let x = 3; x < canvas.width; x += 15) {
-      ctx.fillRect(x, G - 9, 1, 9);
-      ctx.fillRect(x - 1, G - 9, 3, 1);
-    }
-    for (const y of [G - 7, G - 3]) {
-      ctx.fillRect(0, y, canvas.width, 1);
-      for (let x = 6; x < canvas.width; x += 15) {
-        for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) this.px(x + dx + (y % 2) * 4, y + dy);
+    const to = { x: hit.x, y: G - 1 };
+    this.bar(from, to, 1, true);
+    ctx.globalAlpha = 0.4;
+    this.bar(from, to, 1);
+    ctx.globalAlpha = 1;
+    this.line(from.x, from.y, to.x, to.y);
+    const length = Math.hypot(to.x - from.x, to.y - from.y);
+    const run = (this.time * 40) % 8;
+    this.lit(() => {
+      for (let d = run; d < length; d += 8) this.px(mix(from.x, to.x, d / length), mix(from.y, to.y, d / length));
+    });
+    // The orb flashes as it fires; the burst is drawn over the beam's end.
+    this.ring(from.x, from.y, this.time % 0.2 < 0.1 ? 3 : 2, 1);
+    this.impact(hit.x, G);
+  }
+
+  /** Burst where a turret beam hits the ground: a pulsing dithered dome and short rays. */
+  impact(x, G) {
+    const r = 3 + Math.round(Math.abs(Math.sin(this.time * 9)) * 2);
+    // A bright flash dome with a hard rim; the beam ends in its top.
+    for (let dy = -r - 1; dy < 0; dy++) {
+      for (let dx = -r - 1; dx <= r + 1; dx++) {
+        const d = Math.hypot(dx, dy);
+        if (d <= r) this.ctx.clearRect(x + dx, G + dy, 1, 1);
+        else if (d <= r + 1) this.px(x + dx, G + dy);
       }
     }
-    ctx.globalAlpha = 1;
+    // Rays and flying grit, alternating so the burst flickers.
+    const odd = this.time % 0.2 < 0.1;
+    for (const a of odd ? [-2.7, -1.9, -1.2, -0.45] : [-2.4, -1.57, -0.75]) {
+      this.line(x + Math.cos(a) * (r + 3), G + Math.sin(a) * (r + 3), x + Math.cos(a) * (r + 5), G + Math.sin(a) * (r + 5));
+    }
+  }
 
-    const sx = Math.round(canvas.width * 0.06);
-    const sy = G - 22;
-    ctx.fillRect(sx + 4, sy + 9, 1, G - sy - 9);
-    ctx.fillRect(sx + 29, sy + 9, 1, G - sy - 9);
-    this.box(sx, sy, textWidth('KEEP OUT') + 4, 9);
-    drawText(ctx, 'KEEP OUT', sx + 2, sy + 2);
-    const pike = sx + 42;
-    ctx.fillRect(pike, G - 12, 1, 12);
-    this.drawSprite(SKULL, pike - 2, G - 17);
+  /** Wide dithered cone from the core to the ship; its bands run away from the core. */
+  tractorBeam(core, ship) {
+    const { ctx } = this;
+    const x0 = core.x - 7;
+    const x1 = ship.x + 8;
+    const shift = Math.floor(this.time * 14);
+    for (let x = x1; x <= x0; x++) {
+      const u = (x0 - x) / (x0 - x1);
+      const mid = mix(core.y, ship.y, u);
+      const half = 2 + u * 8;
+      const top = Math.round(mid - half);
+      const bottom = Math.round(mid + half);
+      ctx.clearRect(x, top, 1, bottom - top + 1);
+      this.px(x, top);
+      this.px(x, bottom);
+      if ((x + shift) % 5 === 0) continue;
+      for (let y = top + 1; y < bottom; y++) if (((x + y) & 1) === 0) this.px(x, y);
+    }
+  }
+
+  /** The claws hang down and cross in front of the gate, pincers open at the ground. */
+  crossedClaws(m, G) {
+    const { ctx } = this;
+    for (const [from, to] of [
+      [{ x: m.x + 12, y: m.y + 31 }, { x: m.x + 52, y: G - 3 }],
+      [{ x: m.x + 61, y: m.y + 31 }, { x: m.x + 21, y: G - 3 }],
+    ]) {
+      this.bar(from, to, 2, true);
+      this.bar(from, to, 1);
+      for (const u of [0.35, 0.7]) {
+        const joint = mixPoint(from, to, u);
+        ctx.clearRect(Math.round(joint.x) - 1, Math.round(joint.y), 3, 1);
+      }
+      const dir = Math.sign(to.x - from.x);
+      this.line(to.x, to.y, to.x + dir * 3, to.y - 3);
+      this.line(to.x, to.y, to.x + dir * 4, to.y + 1);
+    }
+  }
+
+  /** Heavy gate under the mothership: lintel with rivets, pillars, bars and a padlock. */
+  gate(x, G) {
+    const { ctx } = this;
+    const w = 31;
+    const h = 26;
+    const top = G - h;
+    this.box(x, top, w, h);
+    ctx.fillRect(x, top, w, 3);
+    this.lit(() => {
+      for (let rx = x + 3; rx < x + w - 2; rx += 4) ctx.fillRect(rx, top + 1, 1, 1);
+    });
+    this.box(x, top + 3, 4, h - 3);
+    this.box(x + w - 4, top + 3, 4, h - 3);
+    for (let bx = x + 6; bx < x + w - 5; bx += 3) ctx.fillRect(bx, top + 3, 1, h - 3);
+    ctx.fillRect(x + 4, top + 11, w - 8, 1);
+    const lock = x + Math.floor(w / 2) - 2;
+    this.ring(lock + 2, top + 13, 2, 1, Math.PI, Math.PI * 2);
+    this.box(lock, top + 13, 5, 5);
+    this.px(lock + 2, top + 15);
   }
 
   // --- 401 Session expired: the pilot fell asleep and the time ran out ----------------
@@ -716,17 +956,21 @@ export class ErrorScene extends LcdScene {
     const W = canvas.width;
     const G = this.groundY();
     const t = this.time;
+    // 8 s loop: the last grain falls, the alarm rings, the spider flees, the pilot slaps the clock quiet and sleeps on.
+    const p = t % 8;
     this.moon(Math.round(W * 0.6), 10);
     this.stars(40, 11);
     this.cobweb();
     this.horizon();
+    // A snail crossing the whole screen, behind the props: nothing else is in a hurry.
+    this.outlined(this.frame(SNAIL, 0.5), ((t * 2.5) % (W + 20)) - 10, G - 5);
 
     // The ship parked on its pad for so long that spiders moved in.
     const pad = Math.round(W * 0.03);
+    this.outlined(SHIP, pad + 8, G - 12);
     this.box(pad, G - 5, 27, 3);
     for (let x = pad + 3; x < pad + 27; x += 7) ctx.fillRect(x, G - 2, 1, 2);
     this.px(pad + (t % 2 < 1 ? 1 : 25), G - 6);
-    this.outlined(SHIP, pad + 8, G - 13);
     ctx.globalAlpha = 0.6;
     for (const [x, y] of [[pad + 3, G - 6], [pad + 6, G - 6], [pad + 2, G - 10]]) this.line(pad + 8, G - 7, x, y);
     ctx.globalAlpha = 1;
@@ -739,27 +983,37 @@ export class ErrorScene extends LcdScene {
     this.outlined(PILOT_BODY, crate, G - 11);
     this.outlined(PILOT_HEAD, crate + nod, G - 17 + nod);
     for (let k = 0; k < 3; k++) {
-      const u = (t / 2.4 + k / 3) % 1;
+      const u = (t / 2 + k / 3) % 1;
       ctx.globalAlpha = 1 - u * 0.7;
-      this.zee(crate + 8 + u * 12, G - 21 - u * 22, 2 + Math.floor(u * 4));
+      this.zee(crate + 7 + u * 8, G - 21 - u * 22, 4 + Math.floor(u * 3));
     }
     ctx.globalAlpha = 1;
 
-    // A spider lowers itself on its thread and climbs back up.
-    const spider = Math.round(W * 0.3);
-    const drop = Math.round(16 + (Math.sin(t * 0.5) + 1) * 9);
+    // The alarm clock beside the crate; without waking, the pilot reaches out and slaps it quiet.
+    const clock = { x: crate + 13, y: G - 11 };
+    this.alarmClock(clock.x, clock.y, p);
+    // The hand goes up over the clock, then down on its bell; the alarm stops as it lands (p 4.45).
+    const up = ease(p, 4.1, 4.3) - ease(p, 5, 5.3);
+    const down = ease(p, 4.3, 4.45) - ease(p, 4.9, 5);
+    if (up > 0) {
+      const shoulder = { x: crate + 6, y: G - 9 };
+      const raised = mixPoint(shoulder, { x: clock.x - 2, y: clock.y - 9 }, up);
+      const hand = mixPoint(raised, { x: clock.x + 3, y: clock.y - 4 }, down);
+      this.line(shoulder.x, shoulder.y, hand.x, hand.y);
+      ctx.fillRect(Math.round(hand.x) - 1, Math.round(hand.y) - 1, 3, 2);
+      if (p >= 4.45 && p < 4.65) for (const a of [-2.4, -1.57, -0.75]) this.px(hand.x + Math.cos(a) * 4, hand.y - 1 + Math.sin(a) * 4);
+    }
+
+    // The spider hangs from the web and dashes back up when the alarm goes off.
+    const spider = 10;
+    const drop = Math.round(11 + 23 * (ease(p, 0.2, 2.6) - ease(p, 2.8, 3.1)));
     ctx.globalAlpha = 0.6;
-    ctx.fillRect(spider, 0, 1, drop);
+    ctx.fillRect(spider, 8, 1, drop - 8);
     ctx.globalAlpha = 1;
     this.drawSprite(this.frame(SPIDER, 0.4), spider - 2, drop);
+    if (p >= 2.8 && p < 3.4) drawText(ctx, '!', spider + 4, drop - 2);
 
-    // The sand has run out, and the clock blinks 00:00 like after a power cut.
-    const glass = Math.round(W * 0.84);
-    this.hourglass(glass, G);
-    this.clock(glass, 3, t % 1 < 0.5);
-
-    // A snail crossing the whole screen: nothing else is in a hurry.
-    this.outlined(this.frame(SNAIL, 0.5), ((t * 2.5) % (W + 20)) - 10, G - 5);
+    this.hourglass(Math.round(W * 0.84), G, p);
   }
 
   zee(x, y, size) {
@@ -797,9 +1051,10 @@ export class ErrorScene extends LcdScene {
     this.ctx.globalAlpha = 1;
   }
 
-  hourglass(cx, base) {
+  hourglass(cx, base, p) {
     const { ctx } = this;
     const top = base - 25;
+    ctx.clearRect(cx - 5, top + 2, 11, 21);
     ctx.fillRect(cx - 7, top, 15, 2);
     ctx.fillRect(cx - 7, base - 2, 15, 2);
     ctx.fillRect(cx - 6, top + 2, 1, 21);
@@ -818,42 +1073,60 @@ export class ErrorScene extends LcdScene {
         for (let x = -width; x <= width; x++) if (sand < 3 || (x + y) % 2 === 0) this.px(cx + x, y);
       }
     }
-    // The very last grains, falling through the neck now and then.
-    const fall = (this.time % 1.8) / 0.5;
-    if (fall < 1) this.px(cx, mix(neck, glassBottom - 6, fall));
+    // The very last grain falls through the neck, just before the alarm.
+    const fall = (p - 2.2) / 0.6;
+    if (fall >= 0 && fall < 1) this.px(cx, mix(neck, glassBottom - 6, fall));
   }
 
-  /** 7-segment clock stuck at 00:00; when blinking off, only the ghost segments stay. */
-  clock(cx, y, on) {
-    this.box(cx - 16, y, 33, 13);
-    const value = on ? 0 : '  ';
-    drawNumber(this.ctx, value, 2, cx - 1, y + 2);
-    drawNumber(this.ctx, value, 2, cx + 14, y + 2);
-    if (on) {
-      this.px(cx, y + 4);
-      this.px(cx, y + 8);
+  /** Alarm clock with two bells, standing at 00:00; it hops and rattles while it rings (p 2.8 to 4.45). */
+  alarmClock(x, y, p) {
+    const { ctx } = this;
+    const t = this.time;
+    const ringing = p >= 2.8 && p < 4.45;
+    if (ringing) {
+      x += Math.round(Math.sin(t * 60));
+      y -= Math.floor(t * 20) % 2;
+    }
+    for (const bell of [x + 1, x + 15]) {
+      ctx.fillRect(bell + 1, y - 2, 3, 1);
+      ctx.fillRect(bell, y - 1, 5, 1);
+      if (!ringing || t % 0.2 >= 0.1) continue;
+      for (const a of [-2.5, -1.57, -0.65]) {
+        this.line(bell + 2 + Math.cos(a) * 3, y - 2 + Math.sin(a) * 3, bell + 2 + Math.cos(a) * 4.5, y - 2 + Math.sin(a) * 4.5);
+      }
+    }
+    this.box(x, y, 21, 9);
+    ctx.fillRect(x + 2, y + 9, 2, 2);
+    ctx.fillRect(x + 17, y + 9, 2, 2);
+    if (p < 4.45 || t % 1 < 0.5) {
+      drawText(ctx, '00', x + 2, y + 2);
+      ctx.fillRect(x + 10, y + 3, 1, 1);
+      ctx.fillRect(x + 10, y + 5, 1, 1);
+      drawText(ctx, '00', x + 12, y + 2);
     }
   }
 
   // --- 401 Login required: a checkpoint scans the ship and finds no pilot -------------
 
-  /** The ship at the laser fence: it waits, and now and then tries to slip through. */
+  /**
+   * 6 s loop: the drone scans the waiting ship and types NO ID, the guard asks for
+   * the pilot's ID, the ship dashes for the fence anyway, gets zapped and spins back.
+   */
   checkpoint() {
     const { width: W, height: H } = this.canvas;
-    const p = this.time % 5;
+    const p = this.time % 6;
     const fence = Math.round(W * 0.33);
+    const rest = Math.round(W * 0.08);
     const touch = fence - 1 - SHIP[0].length;
-    const push = p < 3.35 ? ease(p, 3, 3.35) : 1 - ease(p, 3.35, 4.2);
-    const x = Math.round(mix(Math.round(W * 0.08), touch, push));
-    return { p, fence, x, y: Math.round(H * 0.44 + Math.sin(this.time * 1.3) * 2) };
+    const x = Math.round(p < 3.45 ? mix(rest, touch, ease(p, 3, 3.35)) : mix(touch, rest, ease(p, 3.45, 4.3)));
+    return { p, fence, rest, x, y: Math.round(H * 0.44 + Math.sin(this.time * 1.3) * 2) };
   }
 
   loginRequired() {
     const { ctx, canvas } = this;
     const G = this.groundY();
     const t = this.time;
-    const { p, fence, x, y } = this.checkpoint();
-    this.renderPlanet();
+    const { p, fence, rest, x, y } = this.checkpoint();
     this.stars(26, 5);
     this.horizon();
 
@@ -870,37 +1143,68 @@ export class ErrorScene extends LcdScene {
     }
     ctx.globalAlpha = 1;
 
-    this.drawSprite(SHIP, x, y);
-    this.flame(x, y);
+    // Zapped, the ship spins back to where it waited, with a "!".
+    if (p >= 3.45 && p < 4) {
+      const sprite = SHIP_TURNS[Math.floor((p - 3.45) / 0.07) % 4];
+      this.drawSprite(sprite, x + 5 - (sprite[0].length >> 1), y + 3 - (sprite.length >> 1));
+    } else {
+      this.drawSprite(SHIP, x, y);
+      this.flame(x, y);
+    }
+    if (p >= 3.35 && p < 4.1) {
+      ctx.clearRect(x + 3, y - 9, 5, 7);
+      drawText(ctx, '!', x + 4, y - 8);
+    }
 
-    // Scanner drone over the ship: a sweeping beam, then "NO ID".
-    const dx = x + 1;
-    const dy = y - 20 + Math.round(Math.sin(t * 2));
-    this.drawSprite(this.frame(DRONE, 0.08), dx, dy);
-    if (p < 2.2) {
+    // The scanner drone hovers where the ship waits: a beam sweeps the ship, then its screen types NO ID.
+    const drone = { x: rest - 8, y: Math.round(this.canvas.height * 0.44) - 20 + Math.round(Math.sin(t * 2)) };
+    const lens = this.scanner(drone.x, drone.y, p);
+    if (p >= 0.4 && p < 1.8) {
       ctx.globalAlpha = 0.3;
-      this.line(dx + 4, dy + 4, x - 1, y + 7);
-      this.line(dx + 4, dy + 4, x + 11, y + 7);
+      this.line(lens.x, lens.y, x - 1, y + 7);
+      this.line(lens.x, lens.y, x + 11, y + 7);
       ctx.globalAlpha = 0.9;
       ctx.fillRect(x - 1, Math.round(y - 1 + (Math.sin(t * 5) + 1) * 4), 13, 1);
       ctx.globalAlpha = 1;
-      drawText(ctx, 'SCAN', dx - 3, dy - 8);
-    } else if (t % 0.5 < 0.32) {
-      this.tag('NO ID', dx - 6, dy - 11);
     }
 
-    // The guard at its booth, stop sign up.
+    // The guard robot at its booth, stop sign up; its speech bubble's tail sits on its head.
     const gx = Math.round(canvas.width * 0.78);
     const gy = G - 15;
     this.booth(Math.round(canvas.width * 0.86), G);
     this.guard(gx, gy);
-    const ask = Math.floor(t / 2) % 2 ? 'LOG IN' : 'PILOT ID?';
-    this.bubble(ask, gx - 4, gy - 24, gx + 3, 9);
+    const ask = p >= 2.2 && p < 3.8 ? 'PILOT ID?' : p >= 4.4 ? 'LOG IN' : '';
+    if (ask) this.bubble(ask, gx - 4, gy - 24, gx + 6, 15);
+  }
+
+  /** A flying screen with two rotors and a lens below: blank cursor, a scan bar, then NO ID typed out. Returns the lens. */
+  scanner(x, y, p) {
+    const { ctx } = this;
+    const t = this.time;
+    const text = 'NO ID';
+    const w = textWidth(text) + 8;
+    const blade = Math.floor(t * 12) % 2 ? 2 : 1;
+    for (const rotor of [x + 4, x + w - 5]) {
+      ctx.fillRect(rotor, y - 2, 1, 2);
+      ctx.fillRect(rotor - blade, y - 3, blade * 2 + 1, 1);
+    }
+    this.box(x, y, w, FONT_H + 4);
+    const lens = { x: x + (w >> 1), y: y + FONT_H + 5 };
+    ctx.fillRect(lens.x - 1, lens.y - 1, 3, 1);
+    this.px(lens.x, lens.y);
+    if (p >= 0.4 && p < 1.8) {
+      ctx.fillRect(x + 2, y + 3, Math.round((w - 4) * ease(p, 0.4, 1.7)), FONT_H - 2);
+      return lens;
+    }
+    const typed = clamp(Math.floor((p - 1.9) / 0.16), 0, text.length);
+    drawText(ctx, text.slice(0, typed), x + 2, y + 2);
+    if ((p >= 1.9 && typed < text.length) || t % 0.8 < 0.4) ctx.fillRect(x + 2 + textWidth(text.slice(0, typed)) + (typed ? 1 : 0), y + 2, 3, FONT_H);
+    return lens;
   }
 
   loginRequiredTick() {
     const { fence, y } = this.checkpoint();
-    if (this.every(5, 3.35)) this.sparks(fence, y + 3, 10, 30, 40);
+    if (this.every(6, 3.35)) this.sparks(fence, y + 3, 12, 45, 40);
   }
 
   booth(x, base) {
@@ -940,317 +1244,554 @@ export class ErrorScene extends LcdScene {
     this.line(x + 7, y + 7, x + 8, y + 11);
   }
 
-  // --- 400 Score rejected: the record is checked, stamped and shredded ----------------
+  // --- 400 Bad request: we are the inspector; a pilot's flight record gets stamped --
 
-  machineBox() {
-    return { x: Math.round(this.canvas.width * 0.71), y: this.groundY() - 24, w: 24, h: 24 };
+  /** The booth: the counter ledge under the window, the middle, the record's spot on the desk. */
+  booth() {
+    const { width: W, height: H } = this.canvas;
+    const ledge = H - 33;
+    const cx = Math.round(W / 2);
+    return { W, H, ledge, cx, record: { x: cx - 22, y: ledge + 7 } };
   }
 
   scoreRejected() {
-    const { ctx, canvas } = this;
-    const { width: W, height: H } = canvas;
+    const { ctx } = this;
     const t = this.time;
-    const p = t % 6;
-    this.renderPlanet();
-    this.stars(26, 9);
-    this.horizon();
+    const p = t % BOOTH.loop;
+    const b = this.booth();
+    const { W, H, ledge, cx } = b;
+    const shake = p >= BOOTH.stamp && p < BOOTH.stamp + 0.15 ? Math.round(Math.sin(t * 80)) : 0;
+    ctx.save();
+    ctx.translate(shake, 0);
 
-    const sx = Math.round(W * 0.06);
-    const sy = Math.round(H * 0.42 + Math.sin(t * 1.1) * 2);
-    this.drawSprite(SHIP, sx, sy);
-    this.flame(sx, sy);
+    this.boothView(b, p);
+    this.boothPilot(b, p, Math.floor(t / BOOTH.loop) % 3);
 
-    const m = this.machineBox();
-    if (p < 2.2) {
-      // The flight record flies over to the machine, tumbling, a dotted trail behind it.
-      const from = { x: sx + 11, y: sy };
-      const bend = { x: W * 0.5, y: -16 };
-      const to = { x: m.x + 7, y: m.y - 10 };
-      const u = p / 2.2;
-      ctx.globalAlpha = 0.35;
-      for (let i = 0; i < 30; i += 2) {
-        const dot = bezier(from, bend, to, (i / 30) * u);
-        this.px(dot.x, dot.y);
-      }
-      ctx.globalAlpha = 1;
-      const at = bezier(from, bend, to, u);
-      this.drawSprite(PAGE_TURNS[Math.floor(t * 6) % 4], at.x - 4, at.y - 4);
+    // The booth itself: roof beam with rivets, pillars, the counter ledge with its slot.
+    ctx.fillRect(0, 0, W, 3);
+    this.lit(() => {
+      for (let x = 5; x < W; x += 10) ctx.fillRect(x, 1, 1, 1);
+    });
+    for (const x of [0, W - 4]) {
+      this.box(x, 0, 4, ledge);
+      this.ditherWhere(x + 1, 3, x + 2, ledge - 1, () => true);
     }
-    this.checker(m, p);
-    if (p > 4 && p < 5.8) this.bubble('?', sx + 9, sy - 12, sx + 9);
+    ctx.fillRect(0, ledge, W, 1);
+    this.ditherWhere(0, ledge + 1, W, ledge + 2, () => true);
+    ctx.fillRect(0, ledge + 3, W, 1);
+    ctx.fillRect(cx - 12, ledge + 1, 25, 2);
+
+    // Our desk: grain, a coffee mug, the ink pad.
+    ctx.globalAlpha = 0.25;
+    for (const [y, from, to] of [[ledge + 9, 6, 40], [ledge + 17, 24, 52], [ledge + 26, 4, 30], [ledge + 13, W - 60, W - 50]]) {
+      for (let x = from; x < to; x += 2) this.px(x, y);
+    }
+    ctx.globalAlpha = 1;
+    this.mug(9, H - 18);
+    this.box(W - 47, H - 11, 42, 8);
+    this.ditherWhere(W - 46, H - 10, W - 7, H - 5, () => true);
+
+    // The record slides out of the slot, waits on the desk, and goes back.
+    const y = this.recordY(b, p);
+    if (y !== null) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, ledge + 4, W, H);
+      ctx.clip();
+      this.flightLog(b.record.x, y, p);
+      ctx.restore();
+    }
+
+    this.rubberStamp(b, p);
+    ctx.restore();
   }
 
   scoreRejectedTick() {
-    const p = this.time % 6;
-    const m = this.machineBox();
-    if (p >= 4.4 && p < 5.6 && Math.random() < 0.6) {
-      this.particles.push({
-        x: m.x + m.w + 2,
-        y: m.y + m.h - 9 + randomBetween(0, 5),
-        vx: randomBetween(5, 14),
-        vy: randomBetween(-4, 2),
-        life: randomBetween(0.3, 0.5),
-        gravity: 60,
-      });
+    if (this.every(BOOTH.loop, BOOTH.stamp)) {
+      const { cx, record } = this.booth();
+      this.shockWaves.push({ x: cx + 1, y: record.y + 10, life: 0.35 });
+      this.sparks(cx + 1, record.y + 19, 10, 35, 80);
     }
   }
 
-  /** The machine that checks flight records: scans, stamps INVALID, shreds into a bin. */
-  checker(m, p) {
+  /** The record's top on the desk at loop time p, or null while the pilot has it. */
+  recordY({ ledge, record }, p) {
+    const hidden = ledge + 4 - 22;
+    if (p < 2.1 || p >= 5) return null;
+    if (p < 2.5) return Math.round(mix(hidden, record.y, ease(p, 2.1, 2.5)));
+    if (p >= 4.6) return Math.round(mix(record.y, hidden, ease(p, 4.6, 5)));
+    return record.y;
+  }
+
+  /** Outside the glass: stars, the landing field, the queue of pilots waiting their turn. */
+  boothView({ W, ledge }, p) {
     const { ctx } = this;
     const t = this.time;
-    const G = this.groundY();
-    const x = m.x + (p > 3.2 && p < 3.6 ? Math.round(Math.sin(t * 70)) : 0);
-    const { y, w, h } = m;
-
-    // Funnel that takes the record in.
-    ctx.fillRect(x, y - 9, 16, 1);
-    this.line(x, y - 8, x + 5, y - 1);
-    this.line(x + 15, y - 8, x + 10, y - 1);
-    this.box(x, y, w, h);
-    ctx.clearRect(x + 6, y, 4, 1);
-    for (const [rx, ry] of [[2, 2], [w - 3, 2], [2, h - 3], [w - 3, h - 3]]) this.px(x + rx, y + ry);
-
-    // Screen: a blinking cursor, then a scan line, then a big X.
-    const s = { x: x + 4, y: y + 4, w: 13, h: 9 };
-    this.box(s.x, s.y, s.w, s.h);
-    if (p >= 2.2 && p < 3.2) {
-      ctx.fillRect(s.x + 1, s.y + 1 + (Math.floor((p - 2.2) * 20) % (s.h - 2)), s.w - 2, 1);
-    } else if (p >= 3.2 && p < 4.6) {
-      if (t % 0.3 < 0.2) {
-        this.line(s.x + 3, s.y + 2, s.x + s.w - 4, s.y + s.h - 3);
-        this.line(s.x + s.w - 4, s.y + 2, s.x + 3, s.y + s.h - 3);
-      }
-    } else if (t % 1 < 0.5) {
-      ctx.fillRect(s.x + 2, s.y + s.h - 3, 3, 1);
+    for (let i = 0; i < 16; i++) {
+      if ((t + hash(i + 0.3) * 9) % 3 < 0.3) continue;
+      ctx.globalAlpha = hash(i + 0.7) < 0.2 ? 0.8 : 0.4;
+      this.px(6 + hash(i + 0.1) * (W - 12), 6 + hash(i + 0.5) * (ledge - 20));
     }
-    for (let i = 0; i < 3; i++) {
-      ctx.globalAlpha = (Math.floor(t * 4) + i) % 3 === 0 ? 1 : 0.2;
-      ctx.fillRect(x + 19, y + 4 + i * 3, 2, 2);
+    const horizon = ledge - 10;
+    ctx.globalAlpha = 0.35;
+    ctx.fillRect(4, horizon, W - 8, 1);
+    this.ditherWhere(4, horizon + 2, W - 5, ledge - 1, () => true);
+    ctx.globalAlpha = 1;
+    for (let x = 24; x < W - 8; x += 22) if ((t * 2 + x / 22) % 2 < 1) this.px(x, horizon - 1);
+
+    // Each time a pilot is done, the queue shuffles one step forward.
+    const step = 7 * ease(p, BOOTH.loop - 1.4, BOOTH.loop - 0.6);
+    ctx.globalAlpha = 0.6;
+    for (let k = -1; k < 4; k++) {
+      const x = 6 + k * 7 + step;
+      if (x >= 5 && x <= 33) this.drawSprite(TINY_PILOT, x, horizon - 4);
     }
     ctx.globalAlpha = 1;
-    for (let i = 0; i < 3; i++) ctx.fillRect(x + 4, y + 16 + i * 2, 9, 1);
-
-    // Shredder on the right side: its teeth chew while it works.
-    const slot = y + h - 9;
-    const shredding = p >= 4.4 && p < 5.6;
-    ctx.fillRect(x + w, slot, 1, 6);
-    for (let i = 0; i < 6; i++) if (!shredding || (i + Math.floor(t * 20)) % 2) this.px(x + w + 1, slot + i);
-
-    // Bin with crumpled paper on top.
-    const bin = x + w + 4;
-    this.box(bin, G - 10, 9, 10);
-    ctx.fillRect(bin + 3, G - 8, 1, 6);
-    ctx.fillRect(bin + 5, G - 8, 1, 6);
-    this.box(bin + 1, G - 13, 3, 3);
-    this.box(bin + 4, G - 14, 4, 4);
-
-    if (p >= 3.2 && p < 4.6 && t % 0.4 < 0.28) this.tag('INVALID', x + w / 2 - 15, y - 21);
+    // Glare on the glass.
+    ctx.globalAlpha = 0.15;
+    this.line(W - 40, 5, W - 58, 23);
+    this.line(W - 34, 5, W - 46, 17);
+    ctx.globalAlpha = 1;
   }
 
-  // --- 409 Score conflict: a duplicate keeps bumping the ship already docked ----------
+  /**
+   * The pilot at the window: walks up hopeful, hands the record in, sweats while
+   * it is checked, flinches at the stamp, takes it back and walks off sad.
+   * `look` picks the helmet, so each loop brings a different pilot.
+   */
+  boothPilot({ W, ledge, cx }, p, look) {
+    const { ctx } = this;
+    const t = this.time;
+    if (p >= 7.4) return;
+    const leaving = p >= 5.4;
+    const walking = p < 1.8 || leaving;
+    let x = cx;
+    if (p < 1.8) x = mix(-14, cx, p / 1.8);
+    if (leaving) x = mix(cx, W + 14, (p - 5.4) / 2);
+    const mood = p < 1.8 ? 'calm' : p < 2.5 ? 'hopeful' : p < BOOTH.stamp ? 'nervous' : p < 4.6 ? 'shocked' : 'sad';
+    // Drawn at twice the size: the pilot stands right at the glass, close to us.
+    const left = Math.round(x) - 21;
+    const top = ledge - PILOT_BUST.length * 2 + (walking && Math.floor(t * (leaving ? 4 : 6)) % 2 ? 1 : 0) + (mood === 'sad' ? 2 : 0);
+    this.shaded(PILOT_BUST, left, top, 2);
 
-  dock() {
-    const W = this.canvas.width;
-    const x = Math.round(W * 0.75);
-    const station = { x, y: 10, w: W - 3 - x, h: 20 };
-    const lane = station.y + 7;
-    const docked = station.x - 3 - SHIP[0].length;
-    return { station, lane, docked, stop: docked - SHIP[0].length, copierX: Math.round(W * 0.04) };
+    // Three different helmets: an antenna, a fin, a lamp.
+    if (look === 0) {
+      ctx.fillRect(left + 20, top - 5, 2, 5);
+      if (t % 1 < 0.5) ctx.fillRect(left + 19, top - 8, 4, 3);
+    } else if (look === 1) {
+      ctx.fillRect(left + 14, top - 2, 14, 2);
+      ctx.fillRect(left + 17, top - 4, 8, 2);
+    } else {
+      this.box(left + 16, top - 4, 10, 5);
+      if (t % 0.6 < 0.3) ctx.fillRect(left + 19, top - 2, 4, 1);
+    }
+    for (const [dx, dy] of BOOTH_EYES[mood]) ctx.fillRect(left + dx * 2, top + dy * 2, 2, 2);
+    if (mood === 'nervous' && t % 0.8 < 0.6) this.outlined(['.#.', '###', '###', '.#.'], left + 36, top + 6 + Math.floor((t % 0.8) * 6));
+    if (mood === 'shocked' && p < BOOTH.stamp + 0.5) {
+      ctx.clearRect(left + 29, top - 8, 5, 7);
+      drawText(ctx, '!', left + 30, top - 7);
+    }
+    // The record in both gloves: held up, pushed down into the slot (the ledge hides
+    // it, then it slides out on our desk), and later popped back up and carried off.
+    const chest = top + 26;
+    let sheet = null;
+    if (p < 1.6) sheet = chest;
+    else if (p < 2.1) sheet = mix(chest, ledge + 2, ease(p, 1.6, 2.1));
+    else if (p >= 4.95 && p < 5.4) sheet = mix(ledge + 2, chest, ease(p, 4.95, 5.4));
+    else if (leaving) sheet = chest;
+    if (sheet !== null) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, W, ledge);
+      ctx.clip();
+      const sx = left + 16;
+      const sy = Math.round(sheet);
+      this.box(sx, sy, 11, 13);
+      ctx.fillRect(sx + 2, sy + 3, 7, 1);
+      ctx.fillRect(sx + 2, sy + 6, 5, 1);
+      ctx.fillRect(sx + 2, sy + 9, 6, 1);
+      this.shaded(GLOVE, sx - 3, sy + 5);
+      this.shaded(GLOVE, sx + 9, sy + 5);
+      ctx.restore();
+    }
   }
 
-  /** The copy: rises out of the copier, flies in, bumps twice and is scrapped. */
-  copyShip(p) {
-    const { lane, stop, copierX } = this.dock();
-    const hatch = { x: copierX + 8, y: this.groundY() - 16 };
-    if (p < 1) return { sprite: SHIP_UP, x: hatch.x, y: mix(hatch.y, lane - 4, ease(p, 0, 1)) };
-    if (p < 2.2) return { sprite: SHIP, x: mix(hatch.x, stop, ease(p, 1, 2.2)), y: lane, fast: true };
-    if (p < 2.9) return { sprite: SHIP, x: stop - Math.sin((ease(p, 2.2, 2.9) * Math.PI) / 2) * 10, y: lane };
-    if (p < 3.3) return { sprite: SHIP, x: mix(stop - 10, stop, (p - 2.9) / 0.4), y: lane, fast: true };
-    return null;
+  /** The flight record on the desk: portrait, lines, a garbled score field, a signature; stamped after the slam. */
+  flightLog(x, y, p) {
+    const { ctx } = this;
+    const t = this.time;
+    this.box(x, y, 44, 22);
+    ctx.fillRect(x + 1, y + 1, 42, 2);
+    this.box(x + 3, y + 5, 11, 12);
+    this.drawSprite(PILOT_HEAD, x + 5, y + 6);
+    ctx.fillRect(x + 5, y + 13, 7, 3);
+    ctx.fillRect(x + 17, y + 6, 22, 1);
+    ctx.fillRect(x + 17, y + 9, 15, 1);
+    // The score field: digits that never settle, the reason it is rejected.
+    this.box(x + 17, y + 12, 22, 7);
+    for (let i = 0; i < 18; i++) if (hash(Math.floor(t * 8) * 1.7 + i) > 0.5) this.px(x + 19 + (i % 6) * 3 + (i % 2), y + 14 + Math.floor(i / 6));
+    for (let i = 0; i < 10; i++) this.px(x + 3 + i, y + 19 + (i % 3 === 1 ? -1 : 0));
+    // While it is checked, marching ants circle the bad field.
+    if (p >= 2.6 && p < BOOTH.stamp) {
+      for (let i = 0; i < 2 * (26 + 11); i++) {
+        if ((i + Math.floor(t * 12)) % 3) continue;
+        const side = i < 26 ? [x + 15 + i, y + 10] : i < 37 ? [x + 41, y + 10 + i - 26] : i < 63 ? [x + 41 - (i - 37), y + 21] : [x + 15, y + 21 - (i - 63)];
+        this.px(side[0], side[1]);
+      }
+    }
+    if (p >= BOOTH.stamp + 0.03) this.imprint(x + 5, y + 2);
   }
+
+  /** The stamp's mark: INVALID REQUEST in a double frame, worn where the rubber missed. */
+  imprint(x, y) {
+    const { ctx } = this;
+    ctx.clearRect(x, y, 35, 18);
+    this.frameRect(x, y, 35, 18);
+    this.frameRect(x + 2, y + 2, 31, 14);
+    drawText(ctx, 'INVALID', x + 4, y + 4);
+    drawText(ctx, 'REQUEST', x + 4, y + 10);
+    for (let dy = 0; dy < 18; dy++) {
+      for (let dx = 0; dx < 35; dx++) if (hash(dx * 3.7 + dy * 11.3) < 0.035) ctx.clearRect(x + dx, y + dy, 1, 1);
+    }
+  }
+
+  /**
+   * Our hand on the big rubber stamp: it rests on the ink pad, lifts over the
+   * record, winds up, slams (the whole view shakes) and goes back.
+   */
+  rubberStamp({ W, H, cx, record }, p) {
+    const { ctx } = this;
+    const rest = { x: W - 26, y: H - 11 };
+    const over = { x: cx + 1, y: record.y - 7 };
+    const down = record.y + 20;
+    let at = rest;
+    if (p >= 3.2 && p < 3.55) at = mixPoint(rest, over, ease(p, 3.2, 3.55));
+    else if (p >= 3.55 && p < 3.7) at = { x: over.x, y: over.y - Math.round(4 * ease(p, 3.55, 3.7)) };
+    else if (p >= 3.7 && p < BOOTH.stamp) at = { x: over.x, y: mix(over.y - 4, down, (p - 3.7) / (BOOTH.stamp - 3.7)) };
+    else if (p >= BOOTH.stamp && p < 3.95) at = { x: over.x, y: down };
+    else if (p >= 3.95 && p < 4.2) at = { x: over.x, y: mix(down, over.y, ease(p, 3.95, 4.2)) };
+    else if (p >= 4.2 && p < 4.6) at = mixPoint(over, rest, ease(p, 4.2, 4.6));
+    const x = Math.round(at.x);
+    const y = Math.round(at.y);
+
+    // Sleeve from the bottom-right corner: dithered cloth with a hard edge.
+    const elbow = [W + 10, H + 12];
+    const wrist = [x + 5, y - 14];
+    this.shape(Math.round((x + W) / 2), Math.round((y + H) / 2), 0, Math.round(Math.max(W - x, H - y) / 2) + 12, (_, __, sx, sy) => {
+      const d = segmentDist(sx, sy, elbow, wrist, 4);
+      if (d > 0) return null;
+      if (d > -1) return 'ink';
+      return ((sx + sy) & 1) === 0 ? 'ink' : 'clear';
+    });
+    // The stamp: rubber block, neck, knob, and the fist round the knob.
+    ctx.clearRect(x - 19, y - 8, 39, 9);
+    ctx.fillRect(x - 18, y - 7, 37, 5);
+    this.lit(() => ctx.fillRect(x - 17, y - 5, 35, 1));
+    ctx.fillRect(x - 17, y - 1, 35, 1);
+    this.box(x - 2, y - 12, 5, 6);
+    this.shaded(FIST, x - 4, y - 17);
+  }
+
+  /** A coffee mug on the desk, steam curling up from it. */
+  mug(x, y) {
+    const { ctx } = this;
+    const t = this.time;
+    this.box(x, y, 9, 10);
+    ctx.fillRect(x + 1, y + 2, 7, 1);
+    this.ring(x + 9, y + 5, 2, 1, -Math.PI / 2, Math.PI / 2);
+    for (let k = 0; k < 2; k++) {
+      for (let i = 0; i < 6; i++) {
+        ctx.globalAlpha = 0.7 - i * 0.1;
+        this.px(x + 3 + k * 3 + Math.sin(t * 3 + i * 0.9 + k * 2) * 1.5, y - 2 - i * 2 - Math.floor((t * 4) % 2));
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // --- 409 Score conflict: three identical pilots, each says another is the copy -----
 
   scoreConflict() {
     const { ctx } = this;
     const t = this.time;
-    const p = t % 5.4;
-    const { station, lane, docked, copierX } = this.dock();
+    const W = this.canvas.width;
+    const G = this.groundY();
     this.stars(30, 13);
     this.horizon();
-    this.station(station);
+    const p = t % CONFLICT_LOOP;
+    const left = Math.round(W * 0.7);
+    // A accuses B, B accuses A, C joins in, it heats up; then the docked ship
+    // flashes its lights and all three stop and stare at it.
+    const flash = p >= 5 && p < 6.2 && p % 0.4 < 0.2;
+    this.dockStation({ x: left, y: 6, w: W - 3 - left, h: 24 }, G, flash);
 
-    // The original, docked; it flinches when the copy bumps into it.
-    const bumped = (p > 2.2 && p < 2.45) || (p > 3.3 && p < 3.55);
-    if (!bumped || t % 0.1 < 0.05) this.drawSprite(SHIP, docked, lane);
+    const fury = p >= 3 && p < 5;
+    const stare = p >= 5.1 && p < 7.4;
+    const glance = p >= 2.4 && p < 2.9;
+    const stomp = (k) => (fury && (t * 2.5 + k / 3) % 1 < 0.3 ? 1 : 0);
+    const xs = [left - 5, left + 15, W - 13];
+    const a = this.standingPilot(xs[0], G - stomp(0), stare ? -1 : 1, 'wide', 1);
+    const b = this.standingPilot(xs[1], G - stomp(1), glance ? 1 : -1, 'straight', 0);
+    const c = this.standingPilot(xs[2], G - stomp(2), -1, 'step', 1);
+    // Who points at whom and from when; the arms aim at different heights, so they never meet.
+    const arms = [
+      [a, p >= 0.4, () => b(3, 0)],
+      [b, p >= 1.2 && !glance, () => a(4, 9)],
+      [c, p >= 2.2, () => b(3, 1)],
+    ];
+    arms.forEach(([who, points, target], k) => {
+      const hands = [who(0, 8), who(0, 9)];
+      if (points && p < 5.1) this.pointAt(who(5, 7), target(), 5 + (fury ? (Math.floor(t * 8) + k) % 2 : 0));
+      else hands.push(who(6, 8), who(6, 9));
+      for (const { x, y } of hands) this.px(x, y);
+    });
 
-    const copy = this.copyShip(p);
-    if (copy) {
-      if (copy.fast) {
-        for (const [back, alpha] of [[5, 0.3], [10, 0.12]]) {
-          ctx.globalAlpha = alpha;
-          this.drawSprite(copy.sprite, copy.x - back, copy.y);
-        }
-        ctx.globalAlpha = 1;
-      }
-      this.drawSprite(copy.sprite, copy.x, copy.y);
-      if (copy.sprite === SHIP) this.flame(copy.x, copy.y);
-    }
-    this.copyMachine(copierX, this.groundY(), p);
-    if (p > 2.2 && p < 4.9) this.bubble('DUPLICATE', station.x - 2, station.y + station.h + 5, station.x + 4, 4, true);
+    const marks = [
+      p >= 0.4 && p < 5 && '!',
+      (glance || (p >= 2.9 && p < 3)) ? '?' : p >= 1.2 && p < 5 && '!',
+      p >= 2.2 && p < 5 && '!',
+    ];
+    [a(4, -7), b(3, -7), c(4, -7)].forEach((mark, k) => {
+      const text = p >= 5.3 && p < 7.4 ? '?' : marks[k];
+      if (!text) return;
+      ctx.clearRect(mark.x - 2, mark.y - 1, 5, 7);
+      drawText(ctx, text, mark.x - 1, mark.y);
+    });
   }
 
-  scoreConflictTick() {
-    const { lane, stop } = this.dock();
-    if (this.every(5.4, 2.2)) this.sparks(stop + 11, lane + 3, 8, 30, 0);
-    if (this.every(5.4, 3.3)) {
-      this.explode(stop + 5, lane + 3, 16);
-      this.shockWaves.push({ x: stop + 5, y: lane + 3, life: 0.35 });
-    }
+  /**
+   * The standing pilot with feet at `G`, facing right (`face` 1) or left (-1).
+   * Returns a map from the right-facing sprite's pixels to the screen, for the arms.
+   */
+  standingPilot(x, G, face, legs, lean) {
+    const pose = pilotPose(legs, lean);
+    const top = G - pose.length;
+    this.outlined(face > 0 ? pose : flip(pose), x, top);
+    return (lx, ly) => ({ x: face > 0 ? x + lx : x + 7 - lx, y: top + ly });
   }
 
-  /** Station module with a solar wing, windows, slot 01 and one docking port. */
-  station({ x, y, w, h }) {
-    const { ctx } = this;
-    ctx.fillRect(x + w - 12, y - 3, 1, 3);
-    for (let i = 0; i < 4; i++) this.box(x + w - 22 + i * 5, y - 8, 6, 5);
-    this.box(x, y, w, h);
-    for (let wx = x + 3; wx < x + w - 3; wx += 4) ctx.fillRect(wx, y + 3, 2, 2);
-    ctx.fillRect(x + 1, y + 7, w - 2, 1);
-    drawText(ctx, 'DOCK', x + 3, y + 11);
-    drawNumber(ctx, 1, 2, x + w - 3, y + 9);
-    this.box(x - 3, y + 6, 4, 9);
-    if (this.time % 1 < 0.5) this.px(x - 2, y + 4);
+  /** An arm from the shoulder `length` pixels towards `target`, finger out. */
+  pointAt(shoulder, target, length) {
+    const d = Math.hypot(target.x - shoulder.x, target.y - shoulder.y);
+    const hand = { x: shoulder.x + ((target.x - shoulder.x) / d) * length, y: shoulder.y + ((target.y - shoulder.y) / d) * length };
+    this.bar(shoulder, hand, 1, true);
+    this.line(shoulder.x, shoulder.y, hand.x, hand.y);
+    this.ctx.fillRect(Math.round(hand.x) - (hand.x < shoulder.x ? 1 : 0), Math.round(hand.y), 2, 1);
   }
 
-  /** The copier the duplicate comes out of. */
-  copyMachine(x, base, p) {
+  /** The docking station on a pylon: solar wing, slot display 08, one ship docked; `flash` = its lights. */
+  dockStation({ x, y, w, h }, G, flash) {
     const { ctx } = this;
     const t = this.time;
-    const top = base - 16;
-    this.box(x, top, 22, 16);
-    if (p < 1.1) {
-      ctx.clearRect(x + 7, top, 9, 1);
-      this.line(x + 7, top, x + 5, top - 3);
-      this.line(x + 15, top, x + 17, top - 3);
-    } else {
-      ctx.fillRect(x + 7, top - 1, 9, 1);
+    // One faint pylon to the ground, in the gap between the second and third pilot.
+    const lx = x + 26;
+    ctx.globalAlpha = 0.4;
+    ctx.fillRect(lx, y + h, 1, G - y - h);
+    ctx.fillRect(lx + 3, y + h, 1, G - y - h);
+    for (let ly = y + h; ly + 3 < G; ly += 6) this.line(lx, ly, lx + 3, ly + 3);
+    ctx.globalAlpha = 1;
+    // Solar wing along the top strip.
+    ctx.fillRect(x - 45, y + 2, 45, 1);
+    for (let i = 0; i < 5; i++) {
+      this.box(x - 45 + i * 9, y - 2, 8, 9);
+      ctx.fillRect(x - 45 + i * 9, y + 2, 8, 1);
+      ctx.fillRect(x - 41 + i * 9, y - 2, 1, 9);
     }
-    drawText(ctx, 'COPY', x + 4, top + 4);
-    for (const [i, lx] of [x + 3, x + 17].entries()) if ((Math.floor(t * 3) + i) % 2) ctx.fillRect(lx, top + 11, 2, 2);
+    // Hull: windows, a hangar door with hazard stripes, the slot display.
+    this.box(x, y, w, h);
+    for (let wx = x + 3; wx < x + w - 3; wx += 4) ctx.fillRect(wx, y + 2, 2, 2);
+    ctx.fillRect(x + 1, y + 5, w - 2, 1);
+    this.box(x + 2, y + 8, w - 23, h - 10);
+    ctx.fillRect(x + 2 + Math.floor((w - 23) / 2), y + 8, 1, h - 14);
+    for (let sx = x + 2; sx < x + w - 21; sx += 3) this.line(sx, y + h - 3, Math.min(sx + 5, x + w - 22), y + h - 3 - Math.min(5, x + w - 22 - sx));
+    this.box(x + w - 19, y + 7, 17, 13);
+    drawNumber(ctx, 8, 2, x + w - 4, y + 9);
+    ctx.fillRect(x + w - 8, y - 5, 1, 5);
+    if (t % 1 < 0.5) this.px(x + w - 8, y - 6);
+    // The docking port and the one ship in it, clamped.
+    const ship = { x: x - 14, y: y + 14 };
+    this.box(x - 3, ship.y - 1, 4, 9);
+    this.outlined(SHIP, ship.x, ship.y);
+    ctx.fillRect(x - 5, ship.y - 1, 2, 1);
+    ctx.fillRect(x - 5, ship.y + 7, 2, 1);
+    if ((t + 0.5) % 1 < 0.5) this.px(x - 2, ship.y - 3);
+    // Its lights flash: short rays all round it, a pixel clear of the hull.
+    const rays = [[-3, 3, -5, 3], [-2, 0, -3, -1], [-2, 6, -3, 7], [5, -2, 5, -4]];
+    if (flash) for (const [x0, y0, x1, y1] of rays) this.line(ship.x + x0, ship.y + y0, ship.x + x1, ship.y + y1);
   }
 
-  // --- 429 Rate limited: a jam of messages at a red light, everything overheating ----
+  // --- 429 Rate limited: a queue of ships snakes into a planet's landing port -------
+
+  /** The planet on the right, cut off by the edge, and its port on the left rim. */
+  bigPlanet() {
+    const W = this.canvas.width;
+    const y = Math.round(this.groundY() * 0.54);
+    return { x: W + 6, y, r: 44, port: { x: W - 38, y } };
+  }
+
+  /** The queue's S: in from the left edge, down the left side, along the bottom, up and into the port. */
+  queuePath() {
+    const G = this.groundY();
+    const { port } = this.bigPlanet();
+    // The climb runs just right of the error panel, then turns into the hatch.
+    const climb = port.x - 13;
+    const corners = [{ x: -20, y: 15 }, { x: 44, y: 15 }, { x: 44, y: G - 9 }, { x: climb, y: G - 9 }, { x: climb, y: port.y }, { x: port.x - 3, y: port.y }];
+    const pts = [corners[0]];
+    for (let i = 1; i < corners.length - 1; i++) {
+      const from = mixPoint(corners[i - 1], corners[i], 0.5);
+      const to = mixPoint(corners[i], corners[i + 1], 0.5);
+      for (let k = i === 1 ? 0 : 1; k <= 24; k++) pts.push(bezier(from, corners[i], to, k / 24));
+    }
+    pts.push(corners.at(-1));
+    let length = 0;
+    const lengths = pts.map((p, i) => (length += i ? Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y) : 0));
+    return { pts, lengths, length };
+  }
+
+  /** Point `s` pixels along the queue path, and which way the path runs there. */
+  along({ pts, lengths }, s) {
+    const i = clamp(lengths.findIndex((l) => l >= s), 1, pts.length - 1);
+    const a = pts[i - 1];
+    const b = pts[i];
+    const u = clamp((s - lengths[i - 1]) / (lengths[i] - lengths[i - 1] || 1), 0, 1);
+    return { ...mixPoint(a, b, u), angle: Math.atan2(b.y - a.y, b.x - a.x) };
+  }
+
+  /**
+   * The ships from the back of the queue (at the left edge) to the front; the
+   * second from the back is the player. Each loop the hatch opens a crack, the
+   * queue inches up, the hatch slams and the bump runs back down the line.
+   * `hit` is when the bump reaches a ship.
+   */
+  queue() {
+    const path = this.queuePath();
+    const p = this.time % RATE_LOOP;
+    const ships = [];
+    let end = 4;
+    for (let k = 0; ; k++) {
+      const turned = k === 1 ? SHIP_TURNS : QUEUE[k % QUEUE.length];
+      const length = turned[0][0].length;
+      if (end + length > path.length - 4) break;
+      ships.push({ k, turned, length, s: end + length / 2 });
+      end += length + 4;
+    }
+    // The spare length goes into the gaps, so the front ship waits nose to the hatch.
+    const spare = (path.length - end) / (ships.length - 1);
+    for (const ship of ships) {
+      ship.s += ship.k * spare;
+      const back = ships.length - 1 - ship.k;
+      // Facing comes from the resting place, so a ship on a bend does not flip while it inches.
+      const facing = (((Math.round(this.along(path, ship.s).angle / (Math.PI / 2)) % 4) + 4) % 4);
+      ship.hit = 3 + back * 0.12;
+      // Each ship moves back only once the one in front has knocked into it.
+      ship.s += 4 * (ease(p, 2.2 + back * 0.03, 2.5 + back * 0.03) - ease(p, ship.hit, ship.hit + 0.12));
+      ship.nudge = ship.k === 1 && ((p >= 5.6 && p < 5.95) || (p >= 6.4 && p < 6.75));
+      if (ship.nudge) ship.s += 3 * Math.sin(Math.PI * (((p - 5.6) % 0.8) / 0.35));
+      Object.assign(ship, this.along(path, ship.s), { sprite: ship.turned[facing] });
+    }
+    return { path, ships };
+  }
 
   rateLimited() {
-    const { ctx, canvas } = this;
-    const { width: W, height: H } = canvas;
-    const G = this.groundY();
+    const { ctx } = this;
     const t = this.time;
-    const p = t % 2.5;
+    const planet = this.bigPlanet();
     this.stars(24, 17);
+    this.planetDisc(planet);
     this.horizon();
+    this.landingPort(planet.port);
 
-    const tower = Math.round(W * 0.84);
-    this.hotTower(tower, G);
-
-    // The traffic light holds the queue; each green lets one message through.
-    const light = Math.round(W * 0.7);
-    this.trafficLight(light, G, p);
-    const gap = 10;
-    const shift = ease(p, 2, 2.4) * gap;
-    for (let k = 0; ; k++) {
-      let x = light - 4 - gap - k * gap + shift;
-      if (x < -10) break;
-      if (k === 0) x = mix(light - 4 - gap, tower - 8, ease(p, 2, 2.45));
-      const y = G - 6 - (Math.sin(t * 7 + k * 1.7) > 0.6 ? 1 : 0);
-      this.outlined(ENVELOPE, x, y);
-      if (k % 3 === 1 && (t + k) % 2 < 1) drawText(ctx, '!', x + 2, y - 7);
+    const p = t % RATE_LOOP;
+    const { path, ships } = this.queue();
+    for (const ship of ships) {
+      const { sprite, x, y, k } = ship;
+      // Exhaust puffs behind the tail, a big one when the player nudges.
+      const u = (t * 0.8 + k * 0.37) % 1;
+      if (ship.nudge || u < 0.4) {
+        const tail = this.along(path, ship.s - ship.length / 2 - 2 - u * 4);
+        ctx.globalAlpha = 0.5 * (1 - u);
+        this.ring(tail.x, tail.y, ship.nudge ? 2 : 1, 1);
+        ctx.globalAlpha = 1;
+      }
+      const left = x - sprite[0].length / 2;
+      const top = y - sprite.length / 2;
+      this.outlined(sprite, left, top);
+      // The player is knocked by the bump and gets impatient.
+      if (k === 1 && p >= ship.hit && p < 6.8) {
+        ctx.clearRect(x - 2, top - 8, 5, 7);
+        drawText(ctx, '!', x - 1, top - 7);
+      }
+      // One pilot sleeps through all of it.
+      if (k === SLEEPER) {
+        const z = (t * 0.6) % 1;
+        ctx.globalAlpha = 1 - z * 0.6;
+        this.zee(x - 9 - z * 3, top - z * 5, 4);
+        this.zee(x - 15 - z * 3, top - 7 - z * 5, 5);
+        ctx.globalAlpha = 1;
+      }
     }
-
-    this.iceShip(Math.round(W * 0.07), Math.round(H * 0.33), G);
   }
 
-  /** Relay tower running hot: steam puffs, a racing fan, a thermometer at the top. */
-  hotTower(tx, G) {
+  rateLimitedTick() {
+    const { port } = this.bigPlanet();
+    // The front ship hits the slammed hatch; the player knocks into the ship in front.
+    if (this.every(RATE_LOOP, 3)) this.sparks(port.x - 3, port.y, 6, 30, 40);
+    if (this.every(RATE_LOOP, 5.77) || this.every(RATE_LOOP, 6.57)) {
+      const { path, ships } = this.queue();
+      const nose = this.along(path, ships[1].s + ships[1].length / 2 + 1);
+      this.sparks(nose.x, nose.y, 4, 25, 40);
+    }
+  }
+
+  /** Big planet: dithered night side, craters, an outline; only its left part is on screen. */
+  planetDisc({ x: cx, y: cy, r }) {
+    const { ctx } = this;
+    const W = this.canvas.width;
+    for (let y = cy - r; y <= cy + r; y++) {
+      for (let x = cx - r; x < W; x++) {
+        const d = Math.hypot(x - cx, y - cy);
+        if (d > r) continue;
+        ctx.clearRect(x, y, 1, 1);
+        const shade = Math.hypot(x - (cx - r * 0.6), y - (cy - r * 0.6)) / r;
+        if (d > r - 1 || shade > 1.5 || (shade > 1.15 && ((x + y) & 1) === 0)) this.px(x, y);
+      }
+    }
+    // Craters: a rim with its shadow side dithered.
+    for (const [ex, ey, rx, ry] of [[-31, -14, 4, 3], [-15, -27, 4, 2], [-27, 25, 3, 2], [-12, -6, 3, 2]]) {
+      const ox = cx + ex;
+      const oy = cy + ey;
+      this.ditherWhere(ox - rx, oy - ry, ox + rx, oy, (px, py) => ((px - ox) / rx) ** 2 + ((py - oy) / ry) ** 2 <= 1);
+      for (let a = 0; a < Math.PI * 2; a += 0.3) this.px(ox + Math.cos(a) * rx, oy + Math.sin(a) * ry);
+    }
+  }
+
+  /** The port: a hatch on the rim, a signal lamp on top holding the queue, the counter stuck at 999 below. */
+  landingPort({ x, y }) {
     const { ctx } = this;
     const t = this.time;
-    const top = G - 34;
-    this.line(tx - 7, G, tx - 2, top);
-    this.line(tx + 7, G, tx + 2, top);
-    for (let y = top + 4; y + 6 <= G; y += 6) {
-      const a = 2 + ((y - top) * 5) / 34;
-      const b = 2 + ((y + 6 - top) * 5) / 34;
-      ctx.fillRect(Math.round(tx - a), y, Math.round(a * 2) + 1, 1);
-      this.line(tx - a, y, tx + b, y + 6);
-      this.line(tx + a, y, tx - b, y + 6);
-    }
-    this.ring(tx - 2, top - 2, 4, 1, Math.PI * 0.5, Math.PI * 1.25);
-    ctx.fillRect(tx, top - 8, 1, 8);
-    if (t % 0.4 < 0.2) ctx.fillRect(tx - 1, top - 10, 3, 2);
-    this.drawSprite(this.frame(FAN, 0.05), tx - 2, G - 8);
-    for (let k = 0; k < 3; k++) {
-      const u = (t * 0.7 + k / 3) % 1;
-      ctx.globalAlpha = 1 - u;
-      this.ring(tx + 3 + u * 6 + Math.sin(u * 6 + k) * 2, top - 6 - u * 16, 1 + u * 3, u > 0.5 ? 2 : 1);
-    }
-    ctx.globalAlpha = 1;
+    const p = t % RATE_LOOP;
+    // The hatch door lifts a crack (dark inside), then slams shut.
+    const crack = Math.round(3 * (ease(p, 2, 2.3) - ease(p, 2.8, 2.9)));
+    this.box(x - 2, y - 6, 8, 13);
+    this.ditherWhere(x, y - 4, x + 3, y + 4 - crack, () => true);
+    ctx.fillRect(x, y + 5 - crack, 4, crack);
+    for (const dy of [-8, 8]) if ((t + (dy > 0 ? 0.3 : 0)) % 0.6 < 0.3) ctx.fillRect(x, y + dy, 2, 1);
 
-    // Thermometer with the mercury pressing at the top.
-    const th = this.canvas.width - 9;
-    this.box(th, G - 30, 5, 26);
-    ctx.fillRect(th + 2, G - 29 + (t % 0.6 < 0.3 ? 0 : 1), 1, 25);
-    this.disc(th + 2, G - 3, 3);
-    for (let y = G - 26; y < G - 6; y += 4) ctx.fillRect(th - 2, y, 2, 1);
-    if (t % 0.6 < 0.3) drawText(ctx, 'HOT', th - 4, G - 37);
-  }
-
-  trafficLight(x, G, p) {
-    const { ctx } = this;
-    const top = G - 24;
-    ctx.fillRect(x, top + 15, 1, G - top - 15);
-    this.box(x - 3, top, 7, 15);
-    const on = p < 1.7 ? 0 : p < 2 ? 1 : 2;
+    // Signal lamp on a mast: top lit, the bottom one only while the hatch opens.
+    const lamp = { x: x - 1, y: y - 31 };
+    const go = p >= 2 && p < 2.8;
+    ctx.fillRect(lamp.x + 3, lamp.y + 15, 1, 10);
+    this.box(lamp.x, lamp.y, 7, 15);
     for (let i = 0; i < 3; i++) {
-      ctx.globalAlpha = i === on ? 1 : 0.2;
-      ctx.fillRect(x - 1, top + 2 + i * 4, 3, 3);
+      ctx.globalAlpha = i === (go ? 2 : 0) ? 1 : GHOST_ALPHA * 2;
+      ctx.fillRect(lamp.x + 2, lamp.y + 2 + i * 4, 3, 3);
     }
     ctx.globalAlpha = 1;
-    // Countdown to green, like at a pedestrian crossing.
-    if (on === 0) drawNumber(ctx, Math.ceil((1.7 - p) / 0.57), 1, x + 6, top - 11);
-  }
 
-  /** The ship cooling down, frozen into a block of ice with snow falling round it. */
-  iceShip(x, y, G) {
-    const { ctx } = this;
-    const t = this.time;
-    const w = 21;
-    const h = 15;
-    // Snow behind the block first, so the block and the text stay clean.
-    for (let i = 0; i < 8; i++) {
-      const fx = x - 8 + hash(i + 0.5) * (w + 16) + Math.sin(t + i) * 2;
-      const fy = y - 16 + ((t * 5 + hash(i + 0.9) * 50) % 50);
-      this.drawSprite(FLAKE[i % 2], fx, fy);
-    }
-    // Ice: rounded corners, frost dither, a crack, shine on the top left.
-    this.box(x, y, w, h);
-    for (const [cx, cy] of [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]]) ctx.clearRect(x + cx, y + cy, 1, 1);
-    ctx.globalAlpha = 0.3;
-    for (let dy = 1; dy < h - 1; dy++) for (let dx = 1; dx < w - 1; dx++) if ((dx * 3 + dy * 5) % 7 === 0) this.px(x + dx, y + dy);
-    ctx.globalAlpha = 1;
-    this.line(x + w - 1, y + 4, x + w - 4, y + 7);
-    this.line(x + w - 4, y + 7, x + w - 3, y + 10);
-    this.drawSprite(SHIP, x + 5, y + 4);
-    this.lit(() => {
-      this.line(x + 1, y + 4, x + 4, y + 1);
-      this.line(x + 1, y + 7, x + 3, y + 5);
-    });
-    // Icicles and a drip falling to the ground.
-    for (const [ix, len] of [[3, 2], [6, 1], [10, 3], [15, 2], [18, 1]]) ctx.fillRect(x + ix, y + h, 1, len);
-    const drip = (t % 1.6) / 0.8;
-    if (drip < 1) this.px(x + 10, mix(y + h + 3, G - 1, drip * drip));
-    ctx.clearRect(x - 5, y + h + 4, 31, 7);
-    drawText(ctx, 'COOLING', x - 4, y + h + 5);
-    if (t % 1.2 < 0.8) this.px(x + 24, y + h + 9);
+    // Queue counter on a bracket under the hatch, overflowed: a ghost digit in front, 999 blinking.
+    const counter = { x: x + 4, y: y + 10 };
+    ctx.fillRect(counter.x, y + 7, 1, 3);
+    this.box(counter.x, counter.y, 32, 13);
+    drawNumber(ctx, t % 1 < 0.7 ? ' 999' : '    ', 4, counter.x + 30, counter.y + 2);
   }
 
   // --- 503 Offline: the relay satellite is broken and the signal fizzles out ---------
@@ -1350,81 +1891,384 @@ export class ErrorScene extends LcdScene {
     ctx.globalAlpha = 1;
   }
 
-  // --- 503 Leaderboard offline: an empty stadium and a dead scoreboard ---------------
+  // --- 503 Leaderboard offline: the score database is on fire ------------------------
 
-  scoreboardBox() {
+  /** The data-centre module on the right: walls from `roof` down to the ground. */
+  dataCenter() {
     const W = this.canvas.width;
-    const x = Math.round(W * 0.68);
-    const h = 26;
-    return { x, y: this.groundY() - 14 - h, w: Math.min(48, W - 3 - x), h };
+    const G = this.groundY();
+    const x = W - 55;
+    return { x, roof: G - 58, w: 48, racks: G - 30, fire: x + 34, db: { x: x - 12, top: G - 13 } };
+  }
+
+  /**
+   * The 8 s story: the robot's water shrinks the fire, the fire flares up and
+   * knocks the robot onto its back (legs up, dizzy), it sits up, its helmet
+   * lands back on its head, and it walks back and sprays again.
+   */
+  firefight() {
+    const p = this.time % FIRE_LOOP;
+    return {
+      p,
+      size: 2.4 - 1.1 * ease(p, 0.3, 3.6) + 1.9 * ease(p, 3.75, 3.95) - 0.8 * ease(p, 4.4, 6),
+      back: ease(p, 3.8, 4.1) - ease(p, 6, 6.6),
+      down: p >= 4.05 && p < 5.8,
+      helmetOn: p < 3.85 || p >= 5.3,
+      spraying: p < 3.8 || p >= 6.8,
+    };
   }
 
   leaderboardOffline() {
-    const { ctx, canvas } = this;
-    const W = canvas.width;
-    const G = this.groundY();
-    const t = this.time;
-    this.renderPlanet();
-    this.stars(26, 23);
-    this.horizon();
-
-    // Empty winners' podium, the trophy knocked over beside it.
-    const podium = Math.round(W * 0.05);
-    for (const [i, h, place] of [[0, 11, '2'], [1, 15, '1'], [2, 9, '3']]) {
-      this.box(podium + i * 10, G - h, 11, h);
-      drawText(ctx, place, podium + i * 10 + 4, G - h + 2);
-    }
-    const rock = t % 4 < 1.2 && t % 0.4 < 0.2 ? 1 : 0;
-    this.outlined(TROPHY_DOWN, podium + 34, G - 7 - rock);
-    // A tumbleweed rolls across the empty stadium.
-    const roll = ((t * 11) % (W + 20)) - 10;
-    this.outlined(TUMBLEWEED_TURNS[Math.floor(t * 5) % 4], roll, G - 7 - Math.abs(Math.sin(t * 4)) * 3);
-
-    this.scoreboard(this.scoreboardBox());
-  }
-
-  leaderboardOfflineTick() {
-    const { x } = this.scoreboardBox();
-    if (this.every(1.4)) this.sparks(x - 13, this.groundY() - 3, 5, 20, 60);
-  }
-
-  /** Dead bulbs, ghost digits, an OFFLINE sign, and its cable pulled out. */
-  scoreboard({ x, y, w, h }) {
     const { ctx } = this;
     const t = this.time;
     const G = this.groundY();
-    ctx.fillRect(x + 6, y + h, 2, G - y - h);
-    ctx.fillRect(x + w - 8, y + h, 2, G - y - h);
-    this.box(x, y, w, h);
-    this.frameRect(x + 2, y + 2, w - 4, h - 4);
-    for (let bx = x + 3, i = 0; bx < x + w - 3; bx += 5, i++) {
-      ctx.globalAlpha = i === 4 && t % 0.7 < 0.1 ? 1 : 0.2;
-      ctx.fillRect(bx, y - 2, 2, 2);
+    const m = this.dataCenter();
+    const f = this.firefight();
+    this.stars(26, 23);
+    this.horizon();
+
+    // A thick column of smoke rolling up off the screen.
+    for (let k = 0; k < 8; k++) {
+      const u = (t * 0.2 + k / 8) % 1;
+      const cx = m.fire + Math.sin(u * 4 + k) * 3 + u * 8;
+      const cy = m.roof - 8 - u * (m.roof + 4);
+      const r = 4 + u * 5;
+      this.ditherWhere(cx - r, cy - r, cx + r, cy + r, (x, y) => Math.hypot(x - cx, y - cy) <= r);
     }
-    ctx.globalAlpha = 1;
-    const title = 'HI SCORE';
-    drawText(ctx, title, x + Math.round((w - textWidth(title)) / 2), y + 4);
-    const glitch = t % 2.3 < 0.12;
-    drawNumber(ctx, glitch ? Math.floor(hash(Math.floor(t * 20)) * 99999) : '     ', 5, x + Math.round(w / 2) + 16, y + 12);
 
-    // OFFLINE sign hanging under the board, swinging a little.
-    const sign = { x: x + Math.round((w - 31) / 2) + Math.round(Math.sin(t * 1.5)), y: y + h + 3 };
-    this.line(x + 9, y + h, sign.x + 2, sign.y);
-    this.line(x + w - 10, y + h, sign.x + 28, sign.y);
-    this.tag('OFFLINE', sign.x, sign.y);
+    // The module: roof slab, walls, the HI SCORE monitor with dead digits (it rolls in the flare-up).
+    this.box(m.x, m.roof, m.w, G - m.roof + 1);
+    ctx.fillRect(m.x - 2, m.roof, m.w + 4, 3);
+    this.box(m.x + 4, m.roof + 5, 40, 21);
+    drawText(ctx, 'HI SCORE', m.x + 4 + Math.round((40 - textWidth('HI SCORE')) / 2), m.roof + 8);
+    drawNumber(ctx, '     ', 5, m.x + 42, m.roof + 15);
+    if (f.p > 3.8 && f.p < 4.1) ctx.fillRect(m.x + 5, m.roof + 6 + Math.floor((f.p - 3.8) * 63), 38, 1);
+    for (let i = 0; i < 3; i++) this.rack(m.x + 3 + i * 14, m.racks, G, i === 2);
+    // Patch cables sagging from the first rack to the second.
+    for (const y of [m.racks + 6, m.racks + 17]) {
+      const from = { x: m.x + 12, y };
+      const to = { x: m.x + 17, y: y + 1 };
+      let prev = from;
+      for (let k = 1; k <= 6; k++) {
+        const p = bezier(from, { x: m.x + 14.5, y: y + 7 }, to, k / 6);
+        this.line(prev.x, prev.y, p.x, p.y);
+        prev = p;
+      }
+    }
 
-    // The cable runs down and along the ground to a plug, short of its socket.
-    const plug = x - 10;
-    ctx.fillRect(x + 3, y + h, 1, G - y - h);
-    ctx.fillRect(plug + 4, G - 1, x + 3 - plug - 4, 1);
-    this.drawSprite(PLUG, plug, G - 3);
-    this.box(x - 22, G - 8, 5, 8);
-    this.px(x - 20, G - 6);
-    this.px(x - 20, G - 4);
-    if (t % 1.4 < 0.1) {
-      this.line(plug - 1, G - 2, plug - 3, G - 5);
-      this.line(plug - 3, G - 5, plug - 5, G - 3);
-      this.line(plug - 5, G - 3, x - 17, G - 5);
+    this.blaze(FLAMES[Math.floor(t * 8) % 3], m.fire, m.roof, f.size);
+    this.beacon(m.x + 47, m.roof - 1, true);
+    this.database(m.db.x, m.db.top, G);
+    this.firefighter(m, f);
+  }
+
+  leaderboardOfflineTick() {
+    const m = this.dataCenter();
+    const { size } = this.firefight();
+    if (this.every(0.3)) this.sparks(m.x + 35, m.racks + 20, 3, 25, 80);
+    if (this.every(0.2)) this.sparks(m.fire + (Math.random() - 0.5) * 8 * size, m.roof - 5 * size, 2, 20, -30);
+    if (this.every(FIRE_LOOP, 3.85)) this.sparks(m.fire, m.roof - 10, 14, 55, 40);
+    if (this.every(0.9, 0.4)) this.sparks(m.db.x, m.db.top, 4, 25, 60);
+  }
+
+  /** A FLAMES frame `scale` times its size (any scale, so it can grow smoothly), standing on `base`. */
+  blaze(sprite, cx, base, scale) {
+    const { ctx } = this;
+    const w = sprite[0].length;
+    const h = sprite.length;
+    const at = (i, n, origin) => Math.round(origin + (i - n) * scale);
+    sprite.forEach((row, dy) => {
+      const y0 = at(dy, h, base);
+      const y1 = at(dy + 1, h, base);
+      for (let dx = 0; dx < w; dx++) {
+        if (row[dx] === '.') continue;
+        const x0 = at(dx, w / 2, cx);
+        const x1 = at(dx + 1, w / 2, cx);
+        ctx.clearRect(x0, y0, x1 - x0, y1 - y0);
+        if (row[dx] === '#' || (dx + dy) % 2 === 0) ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+      }
+    });
+  }
+
+  /** Rotating alarm beacon standing on (x, y), sweeping three rays round; a ghost lamp when off. */
+  beacon(x, y, on) {
+    const { ctx } = this;
+    const sweep = on ? Math.round(Math.cos(this.time * 5) * 10) : 0;
+    if (on && Math.abs(sweep) >= 3) {
+      const from = { x: x + Math.sign(sweep) * 2, y: y - 2 };
+      const ends = [-0.7, -0.3, 0.1].map((slope) => ({ x: x + sweep, y: from.y + Math.abs(sweep) * slope }));
+      // A light rim, so the rays also show over smoke and fire.
+      for (const end of ends) this.bar(from, end, 1, true);
+      for (const end of ends) this.line(from.x, from.y, end.x, end.y);
+    } else if (on) {
+      // Facing us: a short glint all round.
+      for (const [dx, dy] of [[-4, 0], [4, 0], [-3, -3], [3, -3], [0, -5]]) this.line(x + dx, y - 2 + dy, x + dx * 1.3, y - 2 + dy * 1.3);
+    }
+    this.shaded(on ? ['..#..', '.###.', '.###.', '#####'] : ['..+..', '.+++.', '.+++.', '#####'], x - 2, y - 3);
+  }
+
+  /** The robot on the roof, its hose from the hydrant; in the flare-up its helmet flies off and back. */
+  firefighter(m, f) {
+    const { ctx } = this;
+    // No light rims here: they would notch the roof slab under the feet.
+    const hydrant = { x: m.x, y: m.roof - HYDRANT.length };
+    this.drawSprite(HYDRANT, hydrant.x, hydrant.y);
+    const hop = f.p > 3.8 && f.p < 4.1 ? Math.round(Math.sin((Math.PI * (f.p - 3.8)) / 0.3) * 3) : 0;
+    const bob = f.p > 6 && f.p < 6.6 ? Math.floor(f.p * 8) % 2 : 0;
+    const lying = f.down && f.p < 5;
+    const body = lying ? ROBOT_LYING : f.down ? ROBOT_SAT : ROBOT_BODY;
+    const sprite = f.helmetOn ? [...ROBOT_HELMET, ...body] : body;
+    const x = m.x + 9 - Math.round(f.back * 3);
+    const y = m.roof - sprite.length - hop - bob;
+    this.drawSprite(sprite, x, y);
+    // Dizzy: two stars circle its head while it lies there.
+    if (lying) for (const a of [0, Math.PI]) this.px(x + 2 + Math.cos(f.p * 8 + a) * 3, y - 1 + Math.sin(f.p * 8 + a));
+
+    // The hose arches from the hydrant's outlet to the robot's foot.
+    const hose = { from: { x: hydrant.x + 5, y: hydrant.y + 2 }, to: { x: x + 1, y: y + sprite.length - 1 } };
+    let prev = hose.from;
+    for (let k = 1; k <= 6; k++) {
+      const p = bezier(hose.from, { x: (hose.from.x + hose.to.x) / 2, y: hydrant.y }, hose.to, k / 6);
+      this.line(prev.x, prev.y, p.x, p.y);
+      prev = p;
+    }
+    const nozzle = f.down ? { x: x + sprite[sprite.length - 1].length, y: m.roof - 1 } : { x: x + 7, y: y + sprite.length - 3 };
+
+    if (f.spraying) {
+      // A dashed jet with a light rim, so it reads in front of the fire; light spray where it hits.
+      const from = { x: nozzle.x + 2, y: nozzle.y };
+      const to = { x: m.fire - 2.5 * f.size, y: m.roof - 3 * f.size };
+      const pts = Array.from({ length: 15 }, (_, k) => bezier(from, { x: (from.x + to.x) / 2, y: to.y - 9 }, to, k / 14));
+      for (const p of pts) ctx.clearRect(Math.round(p.x) - 1, Math.round(p.y) - 1, 3, 4);
+      const flow = Math.floor(this.time * 20);
+      pts.forEach((p, k) => (k + flow) % 4 && ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 2));
+      this.lit(() => {
+        for (const [dx, dy] of [[1, -2], [2, 0], [1, 2], [3, -1], [3, 1]]) this.px(to.x + dx, to.y + dy);
+      });
+    }
+    ctx.fillRect(nozzle.x, nozzle.y, 2, 1);
+    if (!f.helmetOn) {
+      // Two turns in the air, landing upright on the sitting robot's head.
+      const u = clamp((f.p - 3.85) / 1.45, 0, 1);
+      const spin = HELMET_TURNS[Math.floor(u * 8) % 4];
+      const hx = mix(m.x + 12.5, m.x + 9.5, u) - spin[0].length / 2;
+      const hy = mix(m.roof - 6.5, m.roof - 5.5, u) - Math.sin(Math.PI * u) * 16 - spin.length / 2;
+      this.drawSprite(spin, hx, hy);
+    }
+  }
+
+  /** A tall server rack: LED rows and drive bays; the blown one is gutted, its doors open on their hinges. */
+  rack(x, top, G, blown) {
+    const { ctx } = this;
+    const t = this.time;
+    this.box(x, top, 10, G - top);
+    if (blown) {
+      // Scorched top, a bent shelf, a torn cable hanging out (it sparks).
+      this.ditherWhere(x + 1, top + 1, x + 8, top + 7, () => true);
+      this.line(x + 1, top + 13, x + 8, top + 16);
+      for (let y = top + 8; y <= top + 20; y++) this.px(x + 4 + Math.round(Math.sin(y * 0.7 + t * 2) * 0.6), y);
+      // Door panels swung out into the gaps beside the rack: an edge line and a dithered face.
+      for (const dir of [-1, 1]) {
+        const hinge = dir < 0 ? x : x + 9;
+        for (let c = 1; c <= 3; c++) {
+          const dx = hinge + dir * c;
+          ctx.clearRect(dx, top + c, 1, G - top - 2 * c);
+          if (c === 3) ctx.fillRect(dx, top + c, 1, G - top - 2 * c);
+          else this.ditherWhere(dx, top + c, dx, G - 1 - c, () => true);
+        }
+      }
+      return;
+    }
+    for (let row = 0, y = top + 2; y < G - 3; row++, y += 4) {
+      if (row % 2) {
+        for (let i = 0; i < 3; i++) if (hash(Math.floor(t * 5) + i * 3.1 + row * 7.7 + x) > 0.4) ctx.fillRect(x + 2 + i * 2, y + 1, 1, 1);
+      } else {
+        this.frameRect(x + 2, y, 6, 3);
+        this.px(x + 6, y + 1);
+      }
+    }
+  }
+
+  /** The database: stacked discs, cracked down the middle, spilling floppies and blocks onto a pile. */
+  database(cx, top, G) {
+    const { ctx } = this;
+    const t = this.time;
+    const rx = 8;
+    const arc = (y, from, to) => {
+      for (let x = -rx; x <= rx; x++) {
+        const dy = 2 * Math.sqrt(1 - (x / rx) ** 2);
+        if (from < 0) this.px(cx + x, y - dy);
+        if (to > 0) this.px(cx + x, y + dy);
+      }
+    };
+
+    // Disks and blocks hop out of the top (drawn first, so the lid hides their start), spinning,
+    // and land on the pile; the last spin frame is the one lying there, so the landing does not pop.
+    [DISK_SPIN, BLOCK_SPIN, DISK_SPIN].forEach((frames, k) => {
+      const rest = frames[0];
+      const spot = { x: cx - 13 - k * 6, y: G - 1 - Math.floor(rest.length / 2) };
+      this.outlined(rest, spot.x - Math.floor(rest[0].length / 2), spot.y - Math.floor(rest.length / 2));
+      const u = (t * 0.5 + k / 3) % 1;
+      const sprite = frames[(Math.floor(u * 6) + 3) % frames.length];
+      const x = mix(cx, spot.x, u);
+      const y = mix(top - 1, spot.y, u) - 24 * u * (1 - u);
+      this.outlined(sprite, x - Math.floor(sprite[0].length / 2), y - Math.floor(sprite.length / 2));
+    });
+
+    ctx.clearRect(cx - rx, top - 2, rx * 2 + 1, G - top + 2);
+    ctx.fillRect(cx - rx, top, 1, G - top);
+    ctx.fillRect(cx + rx, top, 1, G - top);
+    arc(top, -1, 1);
+    for (const y of [top + 5, top + 10]) arc(y, 0, 1);
+    // The crack, with chipped edges.
+    this.lit(() => {
+      this.line(cx, top - 2, cx + 2, top + 4);
+      this.line(cx + 2, top + 4, cx - 1, top + 9);
+      this.line(cx - 1, top + 9, cx + 1, G - 1);
+    });
+    for (const [x, y] of [[-1, 0], [3, 3], [1, 6], [-2, 9]]) this.px(cx + x, top + y);
+  }
+
+  // --- 500 Server error: the onboard computer crashed like a broken jack-in-the-box --
+
+  /** The CRT console on the right: left edge and the top of the screen. */
+  crt() {
+    const W = this.canvas.width;
+    const G = this.groundY();
+    return { x: W - 50, top: G - 50 };
+  }
+
+  serverError() {
+    const { ctx } = this;
+    const t = this.time;
+    const G = this.groundY();
+    const { x, top } = this.crt();
+    const p = t % CRASH_LOOP;
+    this.stars(30, 29);
+    this.horizon();
+
+    // The lid rattles, the spring boings out and the pilot jumps; a whack with the
+    // wrench sends it back in, but it shakes a gear loose that rolls away.
+    const q = p - 1.2;
+    let height = 0;
+    if (p >= 1.2 && p < 3.6) height = 20 * (1 - Math.exp(-q * 3) * Math.cos(q * 12));
+    else if (p >= 3.6) height = 20 * (1 - ease(p, 3.6, 3.9));
+    const rattle = p > 6.3 || (p > 0.2 && p < 1.2);
+    const lid = rattle ? 0.08 * Math.abs(Math.sin(t * 35)) : ease(p, 1.2, 1.3) - ease(p, 3.8, 3.95);
+
+    // Screws fly out with the boing and drop behind the console, so they come first.
+    if (p >= 1.2 && p < 2.5) {
+      const u = (p - 1.2) / 1.3;
+      [[-12, 16], [-20, 20], [20, 22]].forEach(([reach, rise], k) => {
+        this.outlined(SCREW_TURNS[Math.floor(t * 8 + k) % 4], x + 17 + reach * u, top - Math.sin(u * Math.PI) * rise + u * u * (G - top));
+      });
+    }
+
+    // Desk with keys and blinking lights; its front panel hangs open, wires dangling to the floor.
+    this.box(x - 4, G - 21, 48, 21);
+    for (let ky = G - 18; ky < G - 13; ky += 2) for (let kx = x; kx < x + 40; kx += 3) ctx.fillRect(kx, ky, 2, 1);
+    for (let i = 0; i < 5; i++) if (hash(Math.floor(t * 9) + i) > 0.5) ctx.fillRect(x + 22 + i * 4, G - 10, 2, 2);
+    const panel = { x: x + 6, y: G - 11 };
+    this.box(panel.x, panel.y, 12, 10);
+    this.ditherWhere(panel.x + 1, panel.y + 1, panel.x + 10, panel.y + 8, () => true);
+    this.line(panel.x, panel.y, panel.x - 5, panel.y + 2);
+    this.line(panel.x, panel.y + 9, panel.x - 5, panel.y + 8);
+    this.line(panel.x - 5, panel.y + 2, panel.x - 5, panel.y + 8);
+    for (let k = 0; k < 2; k++) {
+      const from = { x: panel.x + 6, y: panel.y + 5 };
+      const bend = { x: panel.x + 2 - k * 3, y: panel.y - 4 + k * 2 };
+      this.curve(from, bend, { x: panel.x - 2 - k * 4 + Math.sin(t * 3 + k), y: G - 1 });
+    }
+
+    // The CRT with a dizzy face: spiral eyes and a wobbly mouth.
+    this.box(x, top, 40, 29);
+    this.box(x + 4, top + 4, 32, 21);
+    for (const ex of [x + 13, x + 27]) {
+      for (let a = Math.PI; a < Math.PI * 4; a += 0.2) this.px(ex + Math.cos(a + t * 6) * a * 0.4, top + 11 + Math.sin(a + t * 6) * a * 0.4);
+    }
+    for (let mx = x + 12; mx <= x + 28; mx++) this.px(mx, top + 19 + Math.round(Math.sin(mx * 1.1 + t * 8)));
+
+    // A slot in the top with its lid hinged on the right; out of it the spring, a gear on top, and wires.
+    ctx.clearRect(x + 9, top, 17, 1);
+    const angle = Math.PI * (1 + lid * 0.65);
+    this.line(x + 26, top, x + 26 + Math.cos(angle) * 17, top + Math.sin(angle) * 17);
+    if (height >= 1) {
+      for (const [reach, rise] of [[-14, 6], [-9, 10]]) {
+        this.curve({ x: x + 12, y: top + 2 }, { x: x + 12 + reach * 0.4, y: top - rise * (height / 20) + Math.sin(t * 5 + reach) }, { x: x + 12 + reach, y: top + 4 });
+      }
+      const head = { x: x + 17 + Math.sin(t * 2.5) * 2 * Math.min(1, height / 20), y: top - height };
+      this.spring({ x: x + 17, y: top + 3 }, head, 3, 2);
+      this.outlined(this.frame(GEAR, 0.12), head.x - 3, head.y - 6);
+    }
+
+    // The gear the whack shakes loose: out of the desk panel, then rolling away to the left.
+    if (p >= 3.6 && p < 6.8) {
+      const land = { x: x - 2, y: G - 4 };
+      const at = p < 4 ? bezier({ x: panel.x + 6, y: panel.y + 4 }, { x: x + 2, y: G - 22 }, land, (p - 3.6) / 0.4) : { x: land.x - (p - 4) * 50, y: land.y };
+      this.outlined(GEAR[Math.floor(t * 12) % 2], at.x - 3, at.y - 3);
+    }
+
+    // The pilot: scratches their helmet, jumps at the boing and over the gear, whacks the desk.
+    const startle = p >= 1.2 && p < 1.6;
+    const jump = 8 * Math.sin(Math.PI * clamp((p - 4.08) / 0.36, 0, 1));
+    const lift = Math.round(jump + (startle ? 2 * Math.sin((Math.PI * (p - 1.2)) / 0.4) : 0));
+    const pilot = this.standingPilot(x - 17, G - lift, p >= 4.5 && p < 6.3 ? -1 : 1, 'straight', 0);
+    const limb = (...joints) => joints.slice(1).forEach((j, i) => this.line(pilot(...joints[i]).x, pilot(...joints[i]).y, pilot(...j).x, pilot(...j).y));
+    const up = startle || jump > 1;
+    const whack = p >= 3.45 && p < 3.75;
+    if (up) limb([1, 7], [-2, 1]);
+    else if (p >= 3 && p < 3.75) limb([0, 8], [0, 9]);
+    else limb([1, 7], [-3, 3], [1 + (Math.floor(t * 7) % 2), -1]);
+    const hand = up || (p >= 3 && !whack && p < 3.45) ? [8, 1] : whack ? [10, 7] : [7, 9];
+    limb([5, 7], hand);
+    const grip = pilot(...hand);
+    if (whack) this.drawSprite(WRENCH_LEVEL, grip.x, grip.y - 1);
+    else this.drawSprite(WRENCH, grip.x - 1, grip.y - 3);
+
+    const mark = (p >= 1.2 && p < 1.8 && '!') || (((p >= 1.8 && p < 2.8) || (p >= 4.6 && p < 6.2)) && '?');
+    if (mark) {
+      const at = pilot(3, -7);
+      ctx.clearRect(at.x - 2, at.y - 1, 5, 7);
+      drawText(ctx, mark, at.x - 1, at.y);
+    }
+  }
+
+  serverErrorTick() {
+    const { x, top } = this.crt();
+    const G = this.groundY();
+    const p = this.time % CRASH_LOOP;
+    if (this.every(CRASH_LOOP, 1.2)) this.sparks(x + 17, top, 10, 45, 80);
+    if (p > 1.2 && p < 3.6 && this.every(0.3)) this.sparks(x + (this.time % 0.6 < 0.3 ? 9 : 26), top, 3, 35, 80);
+    if ((p > 6.3 || (p > 0.2 && p < 1.2)) && this.every(0.25)) this.sparks(x + 17, top - 1, 2, 20, 60);
+    if (this.every(CRASH_LOOP, 3.6)) {
+      this.sparks(x - 4, G - 9, 6, 35, 80);
+      this.shockWaves.push({ x: x - 4, y: G - 9, life: 0.25 });
+    }
+    if (this.every(1.1, 0.5)) this.sparks(x + 5, G - 12, 3, 25, 60);
+  }
+
+  /** A loose wire: a curve from `a` to `c` that bends towards `b`. */
+  curve(a, b, c) {
+    let prev = a;
+    for (let i = 1; i <= 8; i++) {
+      const next = bezier(a, b, c, i / 8);
+      this.line(prev.x, prev.y, next.x, next.y);
+      prev = next;
+    }
+  }
+
+  /** Zigzag spring from `a` to `b`: `coils` turns, `width` pixels out to each side. */
+  spring(a, b, coils, width) {
+    const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const nx = -(b.y - a.y) / length;
+    const ny = (b.x - a.x) / length;
+    let prev = a;
+    for (let i = 1; i <= coils * 2; i++) {
+      const u = i / (coils * 2);
+      const side = i === coils * 2 ? 0 : (i % 2 ? 1 : -1) * width;
+      const p = { x: mix(a.x, b.x, u) + nx * side, y: mix(a.y, b.y, u) + ny * side };
+      this.line(prev.x, prev.y, p.x, p.y);
+      prev = p;
     }
   }
 

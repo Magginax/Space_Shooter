@@ -258,6 +258,14 @@ body.handheld {
   margin: 0;
 }
 
+/* 400: the dialog pops up only once the stamp in the scene behind it has landed
+   (ErrorScene.js, BOOTH.stamp = 3.75 s after the page starts). */
+.error-panel[data-error-type='scoreRejected'] { animation: panel-pop 0.3s steps(3) 4s backwards; }
+@keyframes panel-pop {
+  from { visibility: hidden; opacity: 0; transform: scale(0.4); }
+  to { opacity: 1; transform: none; }
+}
+
 .eyebrow {
   margin: 0;
   font-size: 0.5rem;
@@ -501,5 +509,6 @@ body.handheld {
   .banner,
   .panel-title,
   .panel[data-state='loading'] .status,
+  .error-panel[data-error-type='scoreRejected'],
   .screen.shake { animation: none; }
 }
