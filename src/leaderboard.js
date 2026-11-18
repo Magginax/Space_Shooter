@@ -1,23 +1,22 @@
 import './styles/leaderboard.css';
 import { loadTopScores, isLeaderboardConfigured } from './services/scores.js';
 import { SpaceBackground } from './effects/SpaceBackground.js';
+import { errorUrl } from './services/redirect.js';
 
 const board = document.querySelector('[data-testid="leaderboard"]');
 const table = document.querySelector('[data-testid="leaderboard-table"]');
 const rows = document.querySelector('[data-testid="leaderboard-rows"]');
 const status = document.querySelector('[data-testid="leaderboard-status"]');
-const retryButton = document.querySelector('[data-testid="retry-button"]');
 
 const PODIUM = ['first', 'second', 'third'];
 const rankLabel = (index) => ['1ST', '2ND', '3RD'][index] ?? `${index + 1}TH`;
 
-/** `state` goes to data-state ("loading" | "ready" | "empty" | "error" | "offline") for tests. */
-function showMessage(state, text, { retry = false } = {}) {
+/** `state` goes to data-state ("loading" | "ready" | "empty" | "offline") for tests. */
+function showMessage(state, text) {
   board.dataset.state = state;
   table.hidden = true;
   status.hidden = false;
   status.textContent = text;
-  retryButton.hidden = !retry;
 }
 
 function showScores(scores) {
@@ -37,7 +36,6 @@ function showScores(scores) {
   );
   board.dataset.state = 'ready';
   status.hidden = true;
-  retryButton.hidden = true;
   table.hidden = false;
 }
 
@@ -53,11 +51,10 @@ async function refresh() {
     else showScores(scores);
   } catch (error) {
     console.error(error);
-    showMessage('error', 'CONNECTION LOST', { retry: true });
+    location.assign(errorUrl(import.meta.env.BASE_URL, error.status ?? 0, 'leaderboardOffline'));
   }
 }
 
-retryButton.addEventListener('click', refresh);
 refresh();
 
 new SpaceBackground(document.querySelector('[data-testid="space-canvas"]')).start();

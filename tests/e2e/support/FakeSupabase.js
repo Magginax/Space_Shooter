@@ -40,6 +40,8 @@ export class FakeSupabase {
     this.requests = [];
     this.role = 'user';
     this.profileStatus = 200;
+    this.loginStatus = 200;
+    this.scoresStatus = 200;
     this.accounts = [{ username: 'ace_pilot', displayName: 'ace_pilot', password: PASSWORD, xp: 0 }];
     this.current = null; // the account that is logged in
   }
@@ -63,6 +65,16 @@ export class FakeSupabase {
   /** The database refuses the login token, like for a made-up one. */
   refuseLoginToken() {
     this.profileStatus = 401;
+  }
+
+  /** The login answers with this HTTP status, e.g. 429 = too many attempts. 0 = no answer at all. */
+  refuseLoginWith(status) {
+    this.loginStatus = status;
+  }
+
+  /** Loading and saving scores answer with this HTTP status. 0 = no answer at all. */
+  failScoresWith(status) {
+    this.scoresStatus = status;
   }
 
   /** Starts the page already logged in, as after a login on an earlier visit. */
@@ -146,6 +158,10 @@ export class FakeSupabase {
     }
     if (url.pathname === '/auth/v1/token') {
       if (url.searchParams.get('grant_type') === 'password') {
+        if (this.loginStatus === 0) return route.abort();
+        if (this.loginStatus !== 200) {
+          return route.fulfill({ status: this.loginStatus, json: { error_code: 'over_request_rate_limit', msg: 'Rate limit exceeded' } });
+        }
         const account = this.accounts.find((a) => a.username === usernameIn(body.email));
         if (!account || body.password !== account.password) {
           return route.fulfill({ status: 400, json: { error_code: 'invalid_credentials', msg: 'Invalid login credentials' } });
@@ -161,6 +177,12 @@ export class FakeSupabase {
     if (url.pathname === '/auth/v1/user' && request.method() === 'PUT') {
       if (body.password) this.current.password = body.password;
       return route.fulfill({ json: sessionFor(this.current.username).user });
+    }
+    if (url.pathname === '/rest/v1/scores' && this.scoresStatus !== 200) {
+      if (this.scoresStatus === 0) return route.abort();
+      // supabase-js retries a 503; Retry-After: 0 makes it retry at once instead of waiting seconds.
+      const headers = { 'Retry-After': '0' };
+      return route.fulfill({ status: this.scoresStatus, headers, json: { message: `Fake ${this.scoresStatus}` } });
     }
     if (url.pathname === '/rest/v1/profiles') {
       if (this.profileStatus !== 200) {

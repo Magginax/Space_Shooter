@@ -58,10 +58,11 @@ export function validateCredentials({ username, password }) {
   return { username: validateUsername(username), password: validatePassword(password) };
 }
 
-/** Turns a Supabase error into an Error with a readable message; `code` is kept for the page. */
+/** Turns a Supabase error into an Error with a readable message; `code` and HTTP `status` are kept for the page. */
 function authError(action, error) {
   const result = new Error(ERROR_MESSAGES[error.code] ?? `Could not ${action}: ${error.message}`);
   result.code = error.code;
+  result.status = error.status;
   return result;
 }
 
@@ -93,12 +94,12 @@ export function createAuth({ url, key, fetch, storage } = {}) {
   });
 
   async function loadPlayer(userId) {
-    const { data, error } = await supabase
+    const { data, error, status } = await supabase
       .from('profiles')
       .select('username, display_name, role, level, xp, loadout')
       .eq('id', userId)
       .single();
-    if (error) throw new Error(`Could not load the profile: ${error.message}`);
+    if (error) throw Object.assign(new Error(`Could not load the profile: ${error.message}`), { status });
     return {
       id: userId,
       username: data.username,
@@ -112,8 +113,8 @@ export function createAuth({ url, key, fetch, storage } = {}) {
 
   /** The original username of the account with this login name, or null (database function). */
   async function loginNameFor(name) {
-    const { data, error } = await supabase.rpc('login_name_for', { name });
-    if (error) throw new Error(`Could not look up the name: ${error.message}`);
+    const { data, error, status } = await supabase.rpc('login_name_for', { name });
+    if (error) throw Object.assign(new Error(`Could not look up the name: ${error.message}`), { status });
     return data;
   }
 

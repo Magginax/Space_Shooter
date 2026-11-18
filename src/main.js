@@ -2,7 +2,7 @@ import './styles/main.css';
 import { SpaceShooterGame } from './games/space-shooter/SpaceShooterGame.js';
 import { currentPlayer, isAuthConfigured, saveLoadout, saveProgress } from './services/account.js';
 import { saveScore } from './services/scores.js';
-import { loginUrl } from './services/redirect.js';
+import { errorUrl, loginUrl } from './services/redirect.js';
 
 const section = document.querySelector('[data-testid="game-section"]');
 const lock = document.querySelector('[data-testid="game-lock"]');
@@ -22,7 +22,9 @@ async function saveFinalScore(player, score) {
   try {
     await saveScore(player.displayName, score);
   } catch (error) {
-    console.error(error); // the game goes on even if the leaderboard is down
+    console.error(error);
+    // The run is over, so leaving for the error page loses nothing. No status = refused before sending.
+    location.assign(errorUrl(import.meta.env.BASE_URL, error.status ?? 400, 'leaderboardOffline'));
   }
 }
 
