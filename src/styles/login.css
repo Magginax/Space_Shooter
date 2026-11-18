@@ -195,18 +195,43 @@ body.handheld {
 
 /* ---------- The login window inside the LCD ---------- */
 
+/* .panel is an invisible slot as tall as the tallest mode, centred on the screen.
+   The visible window (::before) is drawn only around the header, the active form
+   and the status line. It is short in Guest mode, but its top never moves,
+   so the < > arrows stay under the mouse when the mode changes. */
 .panel {
   position: relative;
   z-index: 1;
+  display: grid;
+  /* header | active form | status | the rest of the room the tallest form needs */
+  grid-template-rows: auto auto auto 1fr;
   width: min(300px, 78%);
-  padding: 14px 14px 12px;
+  padding: 17px 17px 15px; /* the window's 3px border + 14px / 12px padding */
+  font-size: 0.6rem;
+  text-align: center;
+}
+.panel::before {
+  content: '';
+  grid-area: 1 / 1 / 4 / 2;
+  z-index: -1;
+  margin: -17px -17px -15px; /* reach over the slot's padding */
   background: var(--lcd);
   /* Double frame, like a dialog box on an old phone. */
   border: 3px solid var(--ink);
   box-shadow: 0 0 0 3px var(--lcd), 0 0 0 6px var(--ink), 6px 6px 0 6px var(--ink-ghost);
-  font-size: 0.6rem;
-  text-align: center;
 }
+/* The LCD pixel grid (shared rule above) covers the window only, not the empty slot. */
+.panel::after {
+  position: static;
+  grid-area: 1 / 1 / 4 / 2;
+  z-index: 1;
+  margin: -17px -17px -15px;
+}
+/* Grid items of .panel. Every one is placed explicitly, because the window
+   pseudo-elements already occupy the first column. */
+.login-container { display: contents; }
+.login-form_header { grid-area: 1 / 1; }
+.status { grid-area: 3 / 1; }
 
 .panel-title {
   margin: 0 0 10px;
@@ -216,11 +241,6 @@ body.handheld {
 }
 .panel[data-state='signed-in'] .panel-title { animation: none; }
 
-.modes {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 12px;
-}
 .mode {
   min-width: 30px;
   min-height: 30px;
@@ -241,11 +261,13 @@ body.handheld {
   width: 100%;
 }
 
+/* Inactive forms span the form, status and spare rows. They are invisible
+   (cannot be clicked or focused), but they keep the slot as tall as the tallest form. */
 .login-form {
-  display: grid;
-  gap: 4px;
+  grid-column: 1;
+  grid-row: 2 / -1;
   text-align: left;
-  display: none;
+  visibility: hidden;
 }
 .login-form label {
   margin-top: 4px;
@@ -270,9 +292,10 @@ body.handheld {
   color: var(--lcd);
   caret-color: var(--lcd);
 }
+/* The active form gets its own row, so the window ends right below it. */
 .login-form.active {
-  display: inline;
-  flex-direction: column;
+  grid-row: 2;
+  visibility: visible;
 }
 .login-form_header{
   margin-bottom: 1rem;
@@ -313,13 +336,6 @@ body.handheld {
   border: 2px solid var(--ink);
   background: transparent;
   color: var(--ink);
-}
-
-.helper-text {
-  margin: 2px 0;
-  font-size: 0.45rem;
-  text-align: center;
-  opacity: 0.7;
 }
 
 .profile {
