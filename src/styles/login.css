@@ -231,6 +231,8 @@ body.handheld {
    pseudo-elements already occupy the first column. */
 .login-container { display: contents; }
 .login-form_header { grid-area: 1 / 1; }
+.player,
+.profile { grid-area: 2 / 1; }
 .status { grid-area: 3 / 1; }
 
 .panel-title {
@@ -274,11 +276,6 @@ body.handheld {
   margin-top: 6px;
 }
 
-.modes {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 12px;
-}
 .mode {
   min-width: 30px;
   min-height: 30px;
@@ -291,20 +288,20 @@ body.handheld {
   font-size: 0.5rem;
   cursor: pointer;
 }
-.mode[aria-pressed='true'] {
-  background: var(--ink);
-  color: var(--lcd);
-}
 .w100{
   width: 100%;
 }
 
-/* Inactive forms span the form, status and spare rows. They are invisible
-   (cannot be clicked or focused), but they keep the slot as tall as the tallest form. */
 .login-form {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+}
+/* Carousel modes: inactive ones span the form, status and spare rows. They are invisible
+   (cannot be clicked or focused), but they keep the slot as tall as the tallest mode. */
+.login-container > .login-form {
   grid-column: 1;
   grid-row: 2 / -1;
-  text-align: left;
   visibility: hidden;
 }
 .login-form label {
@@ -330,8 +327,8 @@ body.handheld {
   color: var(--lcd);
   caret-color: var(--lcd);
 }
-/* The active form gets its own row, so the window ends right below it. */
-.login-form.active {
+/* The active mode gets its own row, so the window ends right below it. */
+.login-container > .login-form.active {
   grid-row: 2;
   visibility: visible;
 }

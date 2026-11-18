@@ -31,22 +31,24 @@
           </div>
           <p class="banner" data-testid="banner" aria-hidden="true" hidden></p>
 
-          <section class="panel" data-testid="login" data-state="idle" aria-labelledby="login-title">
-            <div class="login-container">
-              <!-- Top Navigation Bar -->
+          <section class="panel" data-testid="login" data-state="idle" aria-labelledby="stateTitle">
+            <!-- Mode carousel: < Guest | Login | New pilot >. Login and New pilot share one
+                 form; login.js swaps its title, button text and password autocomplete. -->
+            <div class="login-container" data-testid="modes">
               <div class="login-form_header">
                 <button type="button" class="mode" id="prevBtn" aria-label="Previous mode">&lt;</button>
-                <span class="state-title" id="stateTitle">Guest</span>
+                <span class="state-title" id="stateTitle" data-testid="mode-title">Login</span>
                 <button type="button" class="mode" id="nextBtn" aria-label="Next mode">&gt;</button>
               </div>
 
-              <!-- State 1: Guest -->
-              <form class="login-form active" data-title="Guest" action="./views/game.html">
-                <button type="submit" class="mode w100" aria-pressed="true">PLAY</button>
-              </form>
+              <div class="login-form" data-testid="guest">
+                <button type="button" class="start w100" data-testid="guest-button">PLAY</button>
+              </div>
 
-              <!-- State 2: Login -->
-              <form class="login-form" data-title="Login" method="post" novalidate>
+              <!-- novalidate: our own checks show arcade-style messages instead of the browser bubbles.
+                   method="post" + buttons disabled until login.js runs: if the form were sent
+                   before the script loaded, the password must never end up in the address bar. -->
+              <form class="login-form active" data-testid="login-form" method="post" novalidate>
                 <div class="form-group">
                   <label for="username">PILOT ID</label>
                   <input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false"
@@ -57,23 +59,37 @@
                   <input id="password" name="password" type="password" autocomplete="current-password" required />
                   <p class="hint" data-testid="login-hint">3-16 LETTERS, NUMBERS OR _</p>
                 </div>
-                <button type="submit" class="mode w100" aria-pressed="true">PRESS START</button>
+                <button type="submit" class="start w100" data-testid="submit-button" disabled>PRESS START</button>
               </form>
+            </div>
 
-              <!-- State 3: New pilot -->
-              <form class="login-form" data-title="New pilot" method="post" novalidate>
-                <div class="form-group">
-                  <label for="username">PILOT ID</label>
-                  <input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false"
-                    maxlength="16" required />
-                </div>
-                <div class="form-group">
-                  <label for="password">PASSCODE</label>
-                  <input id="password" name="password" type="password" autocomplete="current-password" required />
-                  <p class="hint" data-testid="login-hint">3-16 LETTERS, NUMBERS OR _</p>
-                </div>
-                <button type="submit" class="mode w100" aria-pressed="true">NEW GAME</button>
+            <div class="player" data-testid="player-card" hidden>
+              <p>PILOT <strong data-testid="player-name"></strong></p>
+              <p>RANK <strong data-testid="player-role"></strong></p>
+              <div class="player-actions">
+                <a class="start" data-testid="play-link" href="../#game">PLAY</a>
+                <button type="button" class="start" data-testid="profile-button">PROFILE</button>
+                <button type="button" class="start" data-testid="logout-button">LOGOUT</button>
+              </div>
+            </div>
+
+            <!-- Profile management: two small forms, each with its own button. -->
+            <div class="profile" data-testid="profile" hidden>
+              <form class="login-form" data-testid="rename-form" method="post" novalidate>
+                <label for="new-username">NEW PILOT ID</label>
+                <input id="new-username" name="new-username" autocomplete="username" autocapitalize="none"
+                  spellcheck="false" maxlength="16" required />
+                <button type="submit" class="start" disabled>RENAME</button>
               </form>
+              <form class="login-form" data-testid="password-form" method="post" novalidate>
+                <label for="current-password">CURRENT PASSCODE</label>
+                <input id="current-password" name="current-password" type="password" autocomplete="current-password"
+                  required />
+                <label for="new-password">NEW PASSCODE</label>
+                <input id="new-password" name="new-password" type="password" autocomplete="new-password" required />
+                <button type="submit" class="start" disabled>CHANGE PASSCODE</button>
+              </form>
+              <button type="button" class="start ghost" data-testid="profile-back">&lt; BACK</button>
             </div>
 
             <p class="status" data-testid="login-status" role="status" hidden></p>

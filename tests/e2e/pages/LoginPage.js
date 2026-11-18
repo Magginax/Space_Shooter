@@ -17,7 +17,10 @@ export class LoginPage {
     this.banner = page.getByTestId('banner');
     this.backLink = page.getByRole('link', { name: '< BACK' });
 
-    this.newPilotButton = page.getByRole('button', { name: 'NEW PILOT' });
+    // The mode carousel: < Guest | Login | New pilot >, it opens on Login.
+    this.prevModeButton = page.getByRole('button', { name: 'Previous mode' });
+    this.nextModeButton = page.getByRole('button', { name: 'Next mode' });
+    this.modeTitle = page.getByTestId('mode-title');
     this.form = page.getByTestId('login-form');
     this.username = page.getByLabel('PILOT ID', { exact: true });
     this.password = page.getByLabel('PASSCODE', { exact: true });
@@ -62,7 +65,7 @@ export class LoginPage {
   }
 
   async switchToRegister() {
-    await this.newPilotButton.click();
+    await this.nextModeButton.click();
   }
 
   async register(username, password = PASSWORD) {
@@ -71,6 +74,7 @@ export class LoginPage {
   }
 
   async playAsGuest() {
+    await this.prevModeButton.click();
     await this.guestButton.click();
   }
 
@@ -157,7 +161,7 @@ export class LoginPage {
   }
 
   async expectRegisterMode() {
-    await expect(this.newPilotButton).toHaveAttribute('aria-pressed', 'true');
+    await expect(this.modeTitle).toHaveText('New pilot');
     // Tells password managers to offer a new password.
     await expect(this.password).toHaveAttribute('autocomplete', 'new-password');
   }
