@@ -1,5 +1,5 @@
 import "./styles/login.css";
-import { LcdScene } from "./effects/LcdScene.js";
+import { ErrorScene } from "./effects/ErrorScene.js";
 
 const baseUrl = import.meta.env.BASE_URL;
 
@@ -46,21 +46,21 @@ const ERROR_TYPES = {
     code: "503",
     title: "Leaderboard Offline - Space_Shooter",
     message: "The leaderboard relay is offline. Scores can be tried again later.",
-    actionText: "TRY AGAIN",
+    actionText: "RETURN TO BASE",
     retry: true,
   },
   rateLimited: {
     code: "429",
     title: "Systems Cooling Down - Space_Shooter",
     message: "Too many transmissions are in progress. Stand by before trying again.",
-    actionText: "TRY AGAIN",
+    actionText: "RETURN TO BASE",
     retry: true,
   },
   offline: {
     code: "503",
     title: "503 - Space_Shooter",
     message: "The signal relay is offline. Try connecting again.",
-    actionText: "TRY AGAIN",
+    actionText: "RETURN TO BASE",
     retry: true,
   },
   maintenance: {
@@ -77,15 +77,13 @@ const ERROR_TYPES = {
   },
 };
 
-const canvas = document.querySelector('[data-testid="lcd-canvas"]');
-if (canvas) {
-  const scene = new LcdScene(canvas);
-  scene.start();
-}
-
 const params = new URLSearchParams(window.location.search);
-const pathType = window.location.pathname.endsWith("/404.html") ? "notFound" : null;
+// Shown at any other address = the server had no page there (404.html, vite.config.js).
+const pathType = window.location.pathname.endsWith("/views/error.html") ? null : "notFound";
 const type = params.get("type") ?? pathType ?? "generic";
+
+const canvas = document.querySelector('[data-testid="lcd-canvas"]');
+if (canvas) new ErrorScene(canvas, type).start();
 const requestCode = params.get("code")?.trim();
 const requestMessage = params.get("msg")?.trim();
 const config = ERROR_TYPES[type] ?? ERROR_TYPES.generic;
@@ -109,8 +107,12 @@ if (homeLink) {
 
 if (retryButton) {
   retryButton.hidden = !config.retry;
-  retryButton.addEventListener("click", () => window.location.reload());
+  // Pages open this one with location.assign(), so Back is the request that failed.
+  retryButton.addEventListener("click", () => window.history.back());
 }
+
+// Also served as /404.html for any missing address, where "../" would point elsewhere.
+document.querySelector(".back-link").href = baseUrl;
 
 const panel = document.querySelector('[data-testid="error-panel"]');
 if (panel) panel.dataset.errorType = type;

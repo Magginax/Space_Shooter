@@ -10,10 +10,20 @@ export class ErrorPage {
     this.message = page.locator('#error-message');
     this.homeLink = page.getByTestId('error-home-link');
     this.retryButton = page.getByTestId('retry-button');
+    this.canvas = page.getByTestId('lcd-canvas');
   }
 
   async open(type) {
     await this.page.goto(type ? `${URL_PATH}?type=${encodeURIComponent(type)}` : URL_PATH);
+  }
+
+  /** A mistyped page address; the server answers it with the error page. */
+  async openMissingPage(path = '/views/leaderbord.html') {
+    this.response = await this.page.goto(path);
+  }
+
+  async expectHttpStatus(status) {
+    expect(this.response.status()).toBe(status);
   }
 
   async openWith(type, code, message) {
@@ -23,6 +33,11 @@ export class ErrorPage {
 
   async expectErrorType(type) {
     await expect(this.panel).toHaveAttribute('data-error-type', type);
+  }
+
+  /** Which animation plays behind the panel (src/effects/ErrorScene.js). */
+  async expectScene(scene) {
+    await expect(this.canvas).toHaveAttribute('data-scene', scene);
   }
 
   async expectCode(code) {
