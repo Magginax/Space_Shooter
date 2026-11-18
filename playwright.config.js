@@ -10,13 +10,21 @@ export default defineConfig({
   workers: isCI ? 1 : undefined,
   reporter: [
     ['list'],
-    ['html', { open: 'never' }],
+    // noSnippets: no source code next to every step, a big part of the report
+    // once many tests fail (the error message still shows the failing line).
+    ['html', { open: 'never', noSnippets: true }],
     ['junit', { outputFile: 'test-results/junit.xml' }], // read by Jenkins
   ],
+  // On CI Playwright would put the whole git diff of the commit into the report.
+  captureGitInfo: { commit: true, diff: false },
+  // No screenshots, videos or traces. When ~200 tests failed (x3 with retries)
+  // they made the HTML report too big for Jenkins to open. Tests check
+  // data-state/data-testid, not pixels, so the error message is enough.
   use: {
     baseURL: 'http://localhost:4173',
-    trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
+    trace: 'off',
+    screenshot: 'off',
+    video: 'off',
   },
   projects: [
     // Plain JS modules tested in Node, no browser needed.
