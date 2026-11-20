@@ -74,7 +74,7 @@ function authError(action, error) {
  * `fetch` and `storage` are optional: tests pass fakes so they never talk to
  * the real database or need a browser.
  *
- * A player is { id, username, displayName, role, level, xp }:
+ * A player is { id, username, displayName, role, level, xp, coinsEarned, coinsSpent, loadout }:
  * - username: the name they registered with; never changes (the account is
  *   filed under it)
  * - displayName: the name they are shown with AND log in with; starts equal
@@ -96,7 +96,7 @@ export function createAuth({ url, key, fetch, storage } = {}) {
   async function loadPlayer(userId) {
     const { data, error, status } = await supabase
       .from('profiles')
-      .select('username, display_name, role, level, xp, loadout')
+      .select('username, display_name, role, level, xp, coins_earned, coins_spent, loadout')
       .eq('id', userId)
       .single();
     if (error) throw Object.assign(new Error(`Could not load the profile: ${error.message}`), { status });
@@ -107,6 +107,8 @@ export function createAuth({ url, key, fetch, storage } = {}) {
       role: data.role,
       level: data.level,
       xp: data.xp,
+      coinsEarned: data.coins_earned,
+      coinsSpent: data.coins_spent,
       loadout: cloneLoadout(data.loadout),
     };
   }
@@ -219,10 +221,28 @@ export function createAuth({ url, key, fetch, storage } = {}) {
       return xp;
     },
 
-    /** Saves the mounted gun and its ranks. The database refuses an illegal one. */
-    async setLoadout(loadout) {
+    /**
+     * Saves the lifetime total of coins earned. The database refuses a total
+     * lower than the one it already has. Spending happens in setLoadout.
+     */
+    async setCoinsEarned(earned) {
+      if (!Number.isInteger(earned) || earned < 0) throw new Error('Coins must be zero or more');
       await requireSession();
-      const { error } = await supabase.rpc('set_loadout', { new_loadout: loadout });
+      const { error } = await supabase.rpc('set_coins_earned', { new_earned: earned });
+      if (error) throw new Error(error.message);
+      return earned;
+    },
+
+    /**
+     * Saves the mounted gun, the bought guns and their ranks. The database
+     * refuses an illegal one, and takes the price of what was added from the
+     * balance. `earned` is the total at the purchase, so a kill save still on
+     * its way does not make the purchase look unpaid.
+     */
+    async setLoadout(loadout, earned) {
+      if (!Number.isInteger(earned) || earned < 0) throw new Error('Coins must be zero or more');
+      await requireSession();
+      const { error } = await supabase.rpc('set_loadout', { new_loadout: loadout, new_earned: earned });
       if (error) throw new Error(error.message);
       return loadout;
     },

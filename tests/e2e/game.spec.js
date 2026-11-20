@@ -14,6 +14,7 @@ test.describe('Space shooter', () => {
     await homePage.holdFire();
     await homePage.expectScoreAbove(0);
     await homePage.expectXpAbove(0);
+    await homePage.expectCoinsAbove(0);
     await homePage.releaseFire();
   });
 

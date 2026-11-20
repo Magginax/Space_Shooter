@@ -31,6 +31,8 @@ export const GUEST = Object.freeze({
   isGuest: true,
   level: 0,
   xp: 0,
+  coinsEarned: 0,
+  coinsSpent: 0,
   loadout: defaultLoadout(),
 });
 
@@ -86,17 +88,32 @@ export async function saveProgress(xp) {
 }
 
 /**
- * Saves the logged-in player's guns. Guests are not sent here.
- * The same rules run here and in set_loadout: caps, a locked gun, a rank
- * that would go down, and a total past the level.
+ * Saves the logged-in player's lifetime total of coins earned. Guests are
+ * not sent here, same as saveProgress.
  */
-export async function saveLoadout(previous, next, level) {
-  const error = loadoutError(previous, next, level);
+export async function saveCoins(earned) {
+  if (!Number.isInteger(earned) || earned < 0) throw new Error('Coins must be zero or more');
+  if (!auth) {
+    throw new Error(
+      'Accounts are not configured: set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in .env',
+    );
+  }
+  await auth.setCoinsEarned(earned);
+}
+
+/**
+ * Saves the logged-in player's guns. Guests are not sent here.
+ * The same rules run here and in set_loadout: caps, a gun that is not
+ * bought or not open yet, a rank that would go down, and a price past the
+ * balance. `spent` is the total already paid for `previous`.
+ */
+export async function saveLoadout(previous, next, level, earned, spent) {
+  const error = loadoutError(previous, next, level, earned - spent);
   if (error) throw new Error(error);
   if (!auth) {
     throw new Error(
       'Accounts are not configured: set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in .env',
     );
   }
-  await auth.setLoadout(next);
+  await auth.setLoadout(next, earned);
 }

@@ -625,3 +625,276 @@ alter table public.profiles
       "pods": {"rate": 0, "shot": 0, "pierce": 0}
     }
   }'::jsonb;
+
+-- ---------------------------------------------------------------------------
+-- Coins (added 2026-11-20, after the gun nodes block). Run this whole block once.
+--
+-- A kill earns coins. A gun opens at its level and is then bought, and its
+-- nodes are bought too: a node needs its gun and the node to its left, no
+-- level. Prices match GUNS and NODE_PRICES in
+-- src/games/space-shooter/weapons.js.
+--
+-- Two totals, so a slow kill save cannot refund a purchase. coins_earned only
+-- goes up (set_coins_earned, same trust as set_xp). coins_spent only goes up,
+-- inside set_loadout, by the price of what that save added. The balance is
+-- earned minus spent. Players cannot write either column themselves.
+-- loadout.owned lists the guns that were bought.
+
+alter table public.profiles
+  add column coins_earned integer not null default 0,
+  add column coins_spent integer not null default 0,
+  add constraint profiles_coins_not_negative check (coins_earned >= 0 and coins_spent >= 0),
+  add constraint profiles_coins_cover_spent check (coins_spent <= coins_earned);
+
+-- Whether the gun is in loadout.owned. False when the list is missing.
+create function public.loadout_owns(candidate jsonb, gun text)
+returns boolean
+language sql
+immutable
+as $$
+  select coalesce(
+    jsonb_typeof(candidate -> 'owned') = 'array' and (candidate -> 'owned') @> to_jsonb(gun),
+    false
+  );
+$$;
+
+-- Coins a valid loadout holds: its guns and every node bought on them.
+-- Beam 50, pods 120. On every gun: rate 8 then 16, shot 12, pierce 24.
+create function public.loadout_price(candidate jsonb)
+returns integer
+language sql
+immutable
+as $$
+  select (
+    case when public.loadout_owns(candidate, 'beam') then 50 else 0 end
+    + case when public.loadout_owns(candidate, 'pods') then 120 else 0 end
+    + coalesce(sum(
+        case public.loadout_rank(candidate, gun, 'rate') when 1 then 8 when 2 then 24 else 0 end
+        + 12 * public.loadout_rank(candidate, gun, 'shot')
+        + 24 * public.loadout_rank(candidate, gun, 'pierce')
+      ), 0)
+  )::integer
+  from unnest(array['blaster', 'beam', 'pods']) as gun;
+$$;
+
+-- Replace the check function before rewriting rows, same as the block above:
+-- profiles_loadout_matches_level calls it, and the rows get their list below.
+-- Shape, caps, and ownership. A node no longer needs a level.
+create or replace function public.loadout_valid(candidate jsonb, current_level integer)
+returns boolean
+language plpgsql
+immutable
+as $$
+declare
+  gun text;
+  blaster_rate integer;
+  blaster_shot integer;
+  blaster_pierce integer;
+  beam_rate integer;
+  beam_shot integer;
+  beam_pierce integer;
+  pods_rate integer;
+  pods_shot integer;
+  pods_pierce integer;
+begin
+  if current_level is null or current_level < 0 then
+    return false;
+  end if;
+  if candidate is null or jsonb_typeof(candidate) <> 'object' then
+    return false;
+  end if;
+  if jsonb_typeof(candidate -> 'ranks') <> 'object' then
+    return false;
+  end if;
+  -- The list holds known guns only, and always the blaster.
+  if jsonb_typeof(candidate -> 'owned') is distinct from 'array'
+     or not (candidate -> 'owned') <@ '["blaster", "beam", "pods"]'::jsonb
+     or not public.loadout_owns(candidate, 'blaster')
+  then
+    return false;
+  end if;
+  gun := candidate ->> 'gun';
+  if gun is null or gun not in ('blaster', 'beam', 'pods') or not public.loadout_owns(candidate, gun) then
+    return false;
+  end if;
+
+  blaster_rate := public.loadout_rank(candidate, 'blaster', 'rate');
+  blaster_shot := public.loadout_rank(candidate, 'blaster', 'shot');
+  blaster_pierce := public.loadout_rank(candidate, 'blaster', 'pierce');
+  beam_rate := public.loadout_rank(candidate, 'beam', 'rate');
+  beam_shot := public.loadout_rank(candidate, 'beam', 'shot');
+  beam_pierce := public.loadout_rank(candidate, 'beam', 'pierce');
+  pods_rate := public.loadout_rank(candidate, 'pods', 'rate');
+  pods_shot := public.loadout_rank(candidate, 'pods', 'shot');
+  pods_pierce := public.loadout_rank(candidate, 'pods', 'pierce');
+
+  if blaster_rate is null or blaster_shot is null or blaster_pierce is null
+     or beam_rate is null or beam_shot is null or beam_pierce is null
+     or pods_rate is null or pods_shot is null or pods_pierce is null
+  then
+    return false;
+  end if;
+
+  if blaster_rate > 2 or blaster_shot > 1 or blaster_pierce > 1
+     or beam_rate > 2 or beam_shot > 1 or beam_pierce > 1
+     or pods_rate > 2 or pods_shot > 1 or pods_pierce > 1
+  then
+    return false;
+  end if;
+
+  -- A gun is bought after its level. Its nodes need the gun.
+  if public.loadout_owns(candidate, 'beam') then
+    if current_level < 5 then
+      return false;
+    end if;
+  elsif beam_rate + beam_shot + beam_pierce > 0 then
+    return false;
+  end if;
+  if public.loadout_owns(candidate, 'pods') then
+    if current_level < 10 then
+      return false;
+    end if;
+  elsif pods_rate + pods_shot + pods_pierce > 0 then
+    return false;
+  end if;
+  return true;
+end;
+$$;
+
+-- A bought gun cannot be removed either.
+create or replace function public.loadout_dropped(previous jsonb, candidate jsonb)
+returns boolean
+language plpgsql
+immutable
+as $$
+declare
+  item text;
+  spec text[] := array[
+    'blaster.rate', 'blaster.shot', 'blaster.pierce',
+    'beam.rate', 'beam.shot', 'beam.pierce',
+    'pods.rate', 'pods.shot', 'pods.pierce'
+  ];
+begin
+  if not (candidate -> 'owned') @> (previous -> 'owned') then
+    return true;
+  end if;
+  foreach item in array spec loop
+    if public.loadout_rank(candidate, split_part(item, '.', 1), split_part(item, '.', 2))
+       < public.loadout_rank(previous, split_part(item, '.', 1), split_part(item, '.', 2))
+    then
+      return true;
+    end if;
+  end loop;
+  return false;
+end;
+$$;
+
+-- Rows saved before guns were bought keep the blaster and any gun they
+-- mounted or upgraded. Reaching a level alone does not give the gun.
+update public.profiles
+set loadout = jsonb_set(loadout, '{owned}', (
+  select jsonb_agg(guns.gun order by guns.ord)
+  from unnest(array['blaster', 'beam', 'pods']) with ordinality as guns(gun, ord)
+  where guns.gun = 'blaster'
+     or loadout ->> 'gun' = guns.gun
+     or public.loadout_rank(loadout, guns.gun, 'rate')
+        + public.loadout_rank(loadout, guns.gun, 'shot')
+        + public.loadout_rank(loadout, guns.gun, 'pierce') > 0
+))
+where loadout -> 'owned' is null;
+
+alter table public.profiles
+  alter column loadout set default '{
+    "gun": "blaster",
+    "owned": ["blaster"],
+    "ranks": {
+      "blaster": {"rate": 0, "shot": 0, "pierce": 0},
+      "beam": {"rate": 0, "shot": 0, "pierce": 0},
+      "pods": {"rate": 0, "shot": 0, "pierce": 0}
+    }
+  }'::jsonb;
+
+-- The only way to change coins_earned, and only your own. Same as set_xp: a
+-- lower total is refused, a higher one is accepted. The row is locked so two
+-- saves at once cannot rewind each other.
+create function public.set_coins_earned(new_earned integer)
+returns integer
+language plpgsql
+security definer set search_path = ''
+as $$
+declare
+  current_earned integer;
+begin
+  if auth.uid() is null then
+    raise exception 'You are not logged in';
+  end if;
+  if new_earned is null or new_earned < 0 then
+    raise exception 'Coins must be zero or more';
+  end if;
+  select coins_earned into current_earned from public.profiles where id = auth.uid() for update;
+  if current_earned is null then
+    raise exception 'You are not logged in';
+  end if;
+  if new_earned < current_earned then
+    raise exception 'Coins cannot go down';
+  end if;
+  update public.profiles set coins_earned = new_earned where id = auth.uid();
+  return new_earned;
+end;
+$$;
+
+revoke execute on function public.set_coins_earned(integer) from public, anon;
+grant execute on function public.set_coins_earned(integer) to authenticated;
+
+-- The save now pays. Drop the one-argument function first: left in place, it
+-- would still store a loadout for free.
+drop function public.set_loadout(jsonb);
+
+-- The only way to change the loadout, and only your own. What the new loadout
+-- adds is paid from the balance. new_earned is the player's earned total at
+-- the purchase: it raises coins_earned when the kill save is still on its
+-- way, and never lowers it.
+create function public.set_loadout(new_loadout jsonb, new_earned integer)
+returns jsonb
+language plpgsql
+security definer set search_path = ''
+as $$
+declare
+  current_level integer;
+  current_loadout jsonb;
+  current_earned integer;
+  current_spent integer;
+  price integer;
+begin
+  if auth.uid() is null then
+    raise exception 'You are not logged in';
+  end if;
+  if new_earned is null or new_earned < 0 then
+    raise exception 'Coins must be zero or more';
+  end if;
+  select level, loadout, coins_earned, coins_spent
+    into current_level, current_loadout, current_earned, current_spent
+    from public.profiles where id = auth.uid() for update;
+  if current_level is null then
+    raise exception 'You are not logged in';
+  end if;
+  if not public.loadout_valid(new_loadout, current_level) then
+    raise exception 'That loadout is not allowed';
+  end if;
+  if public.loadout_dropped(current_loadout, new_loadout) then
+    raise exception 'A rank cannot go down';
+  end if;
+  current_earned := greatest(current_earned, new_earned);
+  price := public.loadout_price(new_loadout) - public.loadout_price(current_loadout);
+  if price > current_earned - current_spent then
+    raise exception 'Not enough coins';
+  end if;
+  update public.profiles
+    set loadout = new_loadout, coins_earned = current_earned, coins_spent = current_spent + price
+    where id = auth.uid();
+  return new_loadout;
+end;
+$$;
+
+revoke execute on function public.set_loadout(jsonb, integer) from public, anon;
+grant execute on function public.set_loadout(jsonb, integer) to authenticated;

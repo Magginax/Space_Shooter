@@ -54,6 +54,15 @@ export const MAP = [
   '###########',
 ];
 
+// A coin. The top row is inset, so it reads low if it shares a box with a bar.
+export const COIN = [
+  '.###.',
+  '#####',
+  '##.##',
+  '#####',
+  '.###.',
+];
+
 // Matching frame. Three up-chevrons, the retro rank-up mark.
 export const UPGRADE = [
   '###########',

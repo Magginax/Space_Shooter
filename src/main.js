@@ -1,6 +1,6 @@
 import './styles/main.css';
 import { SpaceShooterGame } from './games/space-shooter/SpaceShooterGame.js';
-import { currentPlayer, isAuthConfigured, saveLoadout, saveProgress } from './services/account.js';
+import { currentPlayer, isAuthConfigured, saveCoins, saveLoadout, saveProgress } from './services/account.js';
 import { saveScore } from './services/scores.js';
 import { errorUrl, loginUrl } from './services/redirect.js';
 
@@ -40,6 +40,8 @@ function startGame(player) {
   const game = new SpaceShooterGame(canvas, {
     level: player.level,
     xp: player.xp,
+    coinsEarned: player.coinsEarned,
+    coinsSpent: player.coinsSpent,
     loadout: player.loadout,
     prompt: abandonPrompt,
     backButton,
@@ -51,16 +53,23 @@ function startGame(player) {
       if (player.isGuest) return;
       saveProgress(xp).catch((error) => console.error(error));
     },
+    onCoins: (earned) => {
+      if (player.isGuest) return;
+      saveCoins(earned).catch((error) => console.error(error));
+    },
     onLoadout: (loadout) => {
       if (player.isGuest) return;
-      const previous = player.loadout;
-      saveLoadout(previous, loadout, game.level)
+      // `player` holds the last loadout the database accepted, and what was paid for it.
+      const spent = game.coinsSpent;
+      saveLoadout(player.loadout, loadout, game.level, game.coinsEarned, player.coinsSpent)
         .then(() => {
           player.loadout = loadout;
+          player.coinsSpent = spent;
         })
         .catch((error) => {
           console.error(error);
-          game.setLoadout(previous);
+          // Back to the accepted loadout. The game hands the coins back with it.
+          game.setLoadout(player.loadout);
         });
     },
   });

@@ -76,6 +76,7 @@ export class HomePage {
     await expect(this.canvas).toHaveAttribute('data-score', '0');
     await expect(this.canvas).toHaveAttribute('data-level', '0');
     await expect(this.canvas).toHaveAttribute('data-xp', '0');
+    await expect(this.canvas).toHaveAttribute('data-coins', '0');
     await expect(this.canvas).toHaveAttribute('data-gun', 'blaster');
     await expect(this.canvas).toHaveAttribute('data-locked', '');
     await expect(this.startButton).toBeVisible();
@@ -167,5 +168,9 @@ export class HomePage {
 
   async expectXpAbove(min) {
     await expect.poll(async () => Number(await this.canvas.getAttribute('data-xp'))).toBeGreaterThan(min);
+  }
+
+  async expectCoinsAbove(min) {
+    await expect.poll(async () => Number(await this.canvas.getAttribute('data-coins'))).toBeGreaterThan(min);
   }
 }

@@ -3,6 +3,7 @@ import { loadEnv } from 'vite';
 import { createClient } from '@supabase/supabase-js';
 import { createAuth, usernameToEmail } from '../../src/services/auth.js';
 import { progressFromXp } from '../../src/games/space-shooter/experience.js';
+import { STAT_ORDER, claim, nodePrice } from '../../src/games/space-shooter/weapons.js';
 
 /**
  * Checks the account rules in the REAL Supabase database from .env.
@@ -11,9 +12,10 @@ import { progressFromXp } from '../../src/games/space-shooter/experience.js';
  * Logs in as the test account (role 'test', see supabase/schema.sql and the
  * setup guide). Its username and password are in .env WITHOUT the VITE_
  * prefix, so they are never built into the website. Password and display-name
- * changes are written and then put back. Experience only goes up (a lower
- * total is refused), so that test leaves the new total in place. Every other
- * change must be refused by the database.
+ * changes are written and then put back. Experience and coins only go up (a
+ * lower total is refused), and a bought node cannot be handed back, so those
+ * tests leave the new totals and the node in place. Every other change must
+ * be refused by the database.
  */
 const env = loadEnv('development', process.cwd(), ''); // '' = all variables, not only VITE_*
 const url = env.VITE_SUPABASE_URL;
@@ -137,18 +139,79 @@ test('a visitor cannot set experience', async () => {
   expect(result.error).not.toBeNull();
 });
 
+test('a logged-in player can raise earned coins, and a lower total is refused', async () => {
+  const { auth, player } = await logInAsTester();
+  const db = createClient(url, key, { auth: { persistSession: false } });
+  const next = player.coinsEarned + 1;
+  try {
+    await expect(auth.setCoinsEarned(next)).resolves.toBe(next);
+    await expect(auth.getCurrentPlayer()).resolves.toMatchObject({ coinsEarned: next, coinsSpent: player.coinsSpent });
+
+    const { error: loginError } = await db.auth.signInWithPassword({ email: usernameToEmail(username), password });
+    expect(loginError).toBeNull();
+    const lower = await db.rpc('set_coins_earned', { new_earned: next - 1 });
+    expect(lower.error?.message).toMatch(/cannot go down/);
+    const { error: writeError } = await db
+      .from('profiles')
+      .update({ coins_earned: next + 500, coins_spent: 0 })
+      .eq('id', player.id);
+    expect(writeError?.message).toMatch(/permission denied/);
+  } finally {
+    await db.auth.signOut();
+    await auth.signOut();
+  }
+});
+
+test('a visitor cannot set coins', async () => {
+  const anon = createClient(url, key, { auth: { persistSession: false } });
+  const result = await anon.rpc('set_coins_earned', { new_earned: 50 });
+  expect(result.error).not.toBeNull();
+});
+
+// shortcut: buys blaster nodes only, so it skips once the test account owns all four; extend it to the other guns then.
+test('a node is paid from the balance, and a short balance is refused', async () => {
+  const { auth, player } = await logInAsTester();
+  try {
+    const stat = STAT_ORDER.find((row) => claim(player.loadout, Infinity, 'blaster', row).ok);
+    test.skip(!stat, 'The test account already owns every blaster node');
+    const next = claim(player.loadout, Infinity, 'blaster', stat).loadout;
+    const price = nodePrice(stat, player.loadout.ranks.blaster[stat]);
+    const balance = player.coinsEarned - player.coinsSpent;
+    if (balance < price) {
+      await expect(auth.setLoadout(next, player.coinsEarned)).rejects.toThrow(/Not enough coins/);
+    }
+
+    // The earned total sent with the purchase covers it, as after the kills that paid for it.
+    const earned = Math.max(player.coinsEarned, player.coinsSpent + price);
+    await expect(auth.setLoadout(next, earned)).resolves.toEqual(next);
+    await expect(auth.getCurrentPlayer()).resolves.toMatchObject({
+      loadout: next,
+      coinsEarned: earned,
+      coinsSpent: player.coinsSpent + price,
+    });
+  } finally {
+    await auth.signOut();
+  }
+});
+
 test('a loadout past a cap is refused, and the column cannot be written directly', async () => {
   const { auth, player } = await logInAsTester();
   const db = createClient(url, key, { auth: { persistSession: false } });
   try {
-    await expect(auth.setLoadout(player.loadout)).resolves.toEqual(player.loadout);
+    // Saving what is already owned costs nothing.
+    await expect(auth.setLoadout(player.loadout, player.coinsEarned)).resolves.toEqual(player.loadout);
+    await expect(auth.getCurrentPlayer()).resolves.toMatchObject({ coinsSpent: player.coinsSpent });
     const illegal = structuredClone(player.loadout);
     illegal.ranks.blaster.rate = 3;
-    await expect(auth.setLoadout(illegal)).rejects.toThrow(/not allowed/);
+    await expect(auth.setLoadout(illegal, player.coinsEarned)).rejects.toThrow(/not allowed/);
+    // A gun that was never bought cannot be mounted, whatever the level.
+    if (!player.loadout.owned.includes('pods')) {
+      await expect(auth.setLoadout({ ...player.loadout, gun: 'pods' }, player.coinsEarned)).rejects.toThrow(/not allowed/);
+    }
     if (player.loadout.ranks.blaster.rate > 0) {
       const dropped = structuredClone(player.loadout);
       dropped.ranks.blaster.rate -= 1;
-      await expect(auth.setLoadout(dropped)).rejects.toThrow(/cannot go down/);
+      await expect(auth.setLoadout(dropped, player.coinsEarned)).rejects.toThrow(/cannot go down/);
     }
 
     const { error: loginError } = await db.auth.signInWithPassword({ email: usernameToEmail(username), password });
@@ -156,7 +219,7 @@ test('a loadout past a cap is refused, and the column cannot be written directly
     const { error: writeError } = await db.from('profiles').update({ loadout: player.loadout }).eq('id', player.id);
     expect(writeError?.message).toMatch(/permission denied/);
     const anon = createClient(url, key, { auth: { persistSession: false } });
-    const result = await anon.rpc('set_loadout', { new_loadout: player.loadout });
+    const result = await anon.rpc('set_loadout', { new_loadout: player.loadout, new_earned: 0 });
     expect(result.error).not.toBeNull();
   } finally {
     await db.auth.signOut();

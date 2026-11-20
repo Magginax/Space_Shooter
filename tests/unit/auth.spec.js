@@ -56,7 +56,9 @@ const LOOKUP = 'POST /rest/v1/rpc/login_name_for';
 const loggedInRoutes = {
   [LOOKUP]: { body: 'pilot_42' },
   'POST /auth/v1/token': { body: sessionBody() },
-  'GET /rest/v1/profiles': { body: { username: 'pilot_42', display_name: 'pilot_42', role: 'user', level: 0, xp: 0 } },
+  'GET /rest/v1/profiles': {
+    body: { username: 'pilot_42', display_name: 'pilot_42', role: 'user', level: 0, xp: 0, coins_earned: 12, coins_spent: 8 },
+  },
 };
 
 const newAuth = (fetch) => createAuth({ ...config, fetch, storage: memoryStorage() });
@@ -106,6 +108,8 @@ test.describe('auth service', () => {
       role: 'user',
       level: 0,
       xp: 0,
+      coinsEarned: 12,
+      coinsSpent: 8,
       loadout: defaultLoadout(),
     });
 
@@ -336,11 +340,32 @@ test.describe('auth service', () => {
     expect(requests.filter((r) => r.url.pathname === '/rest/v1/rpc/set_xp')).toHaveLength(0);
   });
 
-  test('setLoadout sends the mounted gun and its ranks', async () => {
+  test('setCoinsEarned sends the lifetime total', async () => {
+    const { fetch, requests } = fakeServer({ ...loggedInRoutes, 'POST /rest/v1/rpc/set_coins_earned': { body: 13 } });
+    const auth = newAuth(fetch);
+    await auth.signIn({ username: 'pilot_42', password: 'secret123' });
+
+    await expect(auth.setCoinsEarned(13)).resolves.toBe(13);
+    const call = requests.find((r) => r.url.pathname === '/rest/v1/rpc/set_coins_earned');
+    expect(call.body).toEqual({ new_earned: 13 });
+  });
+
+  test('setCoinsEarned refuses a bad total before asking the server, and needs a login', async () => {
+    const { fetch, requests } = fakeServer(loggedInRoutes);
+    const auth = newAuth(fetch);
+
+    await expect(auth.setCoinsEarned(-1)).rejects.toThrow('Coins must be zero or more');
+    await expect(auth.setCoinsEarned(1.5)).rejects.toThrow('Coins must be zero or more');
+    await expect(auth.setCoinsEarned(5)).rejects.toThrow('You are not logged in');
+    expect(requests.filter((r) => r.url.pathname === '/rest/v1/rpc/set_coins_earned')).toHaveLength(0);
+  });
+
+  test('setLoadout sends the guns, their ranks, and the earned total', async () => {
     const loadout = {
       gun: 'blaster',
+      owned: ['blaster'],
       ranks: {
-        blaster: { rate: 0, shot: 0, pierce: 0 },
+        blaster: { rate: 1, shot: 0, pierce: 0 },
         beam: { rate: 0, shot: 0, pierce: 0 },
         pods: { rate: 0, shot: 0, pierce: 0 },
       },
@@ -349,14 +374,26 @@ test.describe('auth service', () => {
     const auth = newAuth(fetch);
     await auth.signIn({ username: 'pilot_42', password: 'secret123' });
 
-    await expect(auth.setLoadout(loadout)).resolves.toEqual(loadout);
+    await expect(auth.setLoadout(loadout, 20)).resolves.toEqual(loadout);
     const call = requests.find((r) => r.url.pathname === '/rest/v1/rpc/set_loadout');
-    expect(call.body).toEqual({ new_loadout: loadout });
+    expect(call.body).toEqual({ new_loadout: loadout, new_earned: 20 });
   });
 
-  test('setLoadout needs a login', async () => {
+  test('setLoadout shows the database message when the balance is short', async () => {
+    const { fetch } = fakeServer({
+      ...loggedInRoutes,
+      'POST /rest/v1/rpc/set_loadout': { status: 400, body: { code: 'P0001', message: 'Not enough coins' } },
+    });
+    const auth = newAuth(fetch);
+    await auth.signIn({ username: 'pilot_42', password: 'secret123' });
+    await expect(auth.setLoadout(defaultLoadout(), 0)).rejects.toThrow('Not enough coins');
+  });
+
+  test('setLoadout needs a whole earned total and a login', async () => {
     const { fetch, requests } = fakeServer(loggedInRoutes);
-    await expect(newAuth(fetch).setLoadout({ gun: 'blaster' })).rejects.toThrow('You are not logged in');
+    const auth = newAuth(fetch);
+    await expect(auth.setLoadout(defaultLoadout())).rejects.toThrow('Coins must be zero or more');
+    await expect(auth.setLoadout(defaultLoadout(), 0)).rejects.toThrow('You are not logged in');
     expect(requests.filter((r) => r.url.pathname === '/rest/v1/rpc/set_loadout')).toHaveLength(0);
   });
 

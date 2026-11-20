@@ -1,5 +1,5 @@
 import { GameLoop, Input, clamp, randomBetween, rectsOverlap } from '../../engine/index.js';
-import { DART, FONT_H, GHOST_ALPHA, HEART, KEYCAP_H, KEYCAP_W, MAP, SHIP, UPGRADE, drawKeycap, drawNumber, drawSmallNumber, drawSprite, drawText, smallNumberWidth, spriteBox, textWidth } from '../../effects/lcdArt.js';
+import { COIN, DART, FONT_H, GHOST_ALPHA, HEART, KEYCAP_H, KEYCAP_W, MAP, SHIP, UPGRADE, drawKeycap, drawNumber, drawSmallNumber, drawSprite, drawText, smallNumberWidth, spriteBox, textWidth } from '../../effects/lcdArt.js';
 import { grantXp, progressFromXp, xpForLevel } from './experience.js';
 import { EDGES, NODES, START_NODE, levelIdAt, step } from './levelMap.js';
 import {
@@ -9,13 +9,16 @@ import {
   STAT_ORDER,
   burstBox,
   GUN_BLURB,
+  buyGun,
   claim,
   cloneLoadout,
   cooldownFor,
   equip,
+  isOwned,
   isUnlocked,
+  loadoutPrice,
   nodeBlurb,
-  nodeLevel,
+  nodePrice,
   nodeStatus,
   spawnShots,
   statCap,
@@ -34,6 +37,7 @@ const SHIP_SPEED = 55;
 const DART_SPEED = 26;
 const DART_POINTS = 50;
 const DART_XP = 50;
+const DART_COINS = 1;
 const BLINK_TIME = 1.2;
 // Experience bar: one framed track, filled from the left like a retro gauge.
 const BAR_TRACK_W = 55;
@@ -69,6 +73,8 @@ const DEBUG_ROWS = [
   { id: 'beam', label: 'JUMP BEAM LV 5' },
   { id: 'pods', label: 'JUMP PODS LV 10' },
   { id: 'all', label: 'JUMP ALL LV 16' },
+  { id: 'coins100', label: 'COINS PLUS 100' },
+  { id: 'coins1000', label: 'COINS PLUS 1000' },
   { id: 'buy', label: 'BUY OPEN NODES' },
   { id: 'mount', label: 'MOUNT NEXT GUN' },
   { id: 'heal', label: 'HEAL' },
@@ -82,11 +88,11 @@ const DEBUG_ROWS = [
  * States "idle" -> "map" -> "running" -> "over", "paused" over a run,
  * "upgrades" for the gun banners, and "weapon" for one gun's nodes.
  * Mirrored on the canvas as data-state, with data-lives, data-score,
- * data-level, data-xp, data-node, data-gun, data-row, and data-locked,
- * so tests never read pixels.
+ * data-level, data-xp, data-coins, data-node, data-gun, data-row, and
+ * data-locked, so tests never read pixels.
  */
 export class SpaceShooterGame {
-  constructor(canvas, { onScore = () => {}, onGameOver = () => {}, onProgress = () => {}, onLoadout = () => {}, level = 0, xp = 0, loadout = null, prompt = null, backButton = null } = {}) {
+  constructor(canvas, { onScore = () => {}, onGameOver = () => {}, onProgress = () => {}, onCoins = () => {}, onLoadout = () => {}, level = 0, xp = 0, coinsEarned = 0, coinsSpent = 0, loadout = null, prompt = null, backButton = null } = {}) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.wrapper = canvas.parentElement;
@@ -94,7 +100,11 @@ export class SpaceShooterGame {
     this.onScore = onScore;
     this.onGameOver = onGameOver;
     this.onProgress = onProgress;
+    this.onCoins = onCoins;
     this.onLoadout = onLoadout;
+    // Lifetime totals. Earned only goes up. Spent follows what the loadout holds.
+    this.coinsEarned = coinsEarned;
+    this.coinsSpent = coinsSpent;
     this.prompt = prompt;
     this.backButton = backButton;
     this.nodeId = START_NODE;
@@ -144,6 +154,17 @@ export class SpaceShooterGame {
     this.setProgress(grantXp(this.xp, amount).xp);
     this.syncHud();
     this.onProgress(this.xp);
+  }
+
+  /** The wallet. A new round does not clear it. */
+  get coins() {
+    return this.coinsEarned - this.coinsSpent;
+  }
+
+  addCoins(amount) {
+    this.coinsEarned += amount;
+    this.syncHud();
+    this.onCoins(this.coinsEarned);
   }
 
   reset() {
@@ -239,28 +260,35 @@ export class SpaceShooterGame {
     if (raised) this.onProgress(this.xp);
   }
 
+  /** A cheat still pays: the price is granted first, so the database accepts the save. */
+  grantAndCommit(next) {
+    const price = loadoutPrice(next) - loadoutPrice(this.loadout);
+    if (price > 0) this.addCoins(price);
+    this.commitLoadout(next);
+  }
+
+  /** Every node left on the guns already bought. */
   buyOpenNodes() {
     let loadout = this.loadout;
-    let changed = false;
-    for (const gun of GUN_ORDER) {
+    for (const gun of loadout.owned) {
       for (const stat of STAT_ORDER) {
-        let result = claim(loadout, this.level, gun, stat);
+        let result = claim(loadout, Infinity, gun, stat);
         while (result.ok) {
           loadout = result.loadout;
-          changed = true;
-          result = claim(loadout, this.level, gun, stat);
+          result = claim(loadout, Infinity, gun, stat);
         }
       }
     }
-    if (changed) this.commitLoadout(loadout);
+    this.grantAndCommit(loadout);
   }
 
   mountNextGun() {
     const at = GUN_ORDER.indexOf(this.loadout.gun);
     const gunId = GUN_ORDER[(at + 1) % GUN_ORDER.length];
     if (this.level < GUNS[gunId].unlockLevel) this.setLevel(GUNS[gunId].unlockLevel);
-    const result = equip(this.loadout, this.level, gunId);
-    if (result.ok) this.commitLoadout(result.loadout);
+    const bought = buyGun(this.loadout, this.level, Infinity, gunId);
+    const result = equip(bought.ok ? bought.loadout : this.loadout, gunId);
+    if (result.ok) this.grantAndCommit(result.loadout);
   }
 
   runDebug(id) {
@@ -269,6 +297,8 @@ export class SpaceShooterGame {
     else if (id === 'beam') this.setLevel(5);
     else if (id === 'pods') this.setLevel(10);
     else if (id === 'all') this.setLevel(16);
+    else if (id === 'coins100') this.addCoins(100);
+    else if (id === 'coins1000') this.addCoins(1000);
     else if (id === 'buy') this.buyOpenNodes();
     else if (id === 'mount') this.mountNextGun();
     else if (id === 'heal') {
@@ -284,6 +314,7 @@ export class SpaceShooterGame {
     this.canvas.dataset.score = String(this.score);
     this.canvas.dataset.level = String(this.level);
     this.canvas.dataset.xp = String(this.xp);
+    this.canvas.dataset.coins = String(this.coins);
     this.syncFocus();
   }
 
@@ -370,17 +401,22 @@ export class SpaceShooterGame {
     this.onScore(this.score);
   }
 
+  /** Spent moves with the loadout's price, so a refused save hands the coins back. */
+  swapLoadout(next) {
+    this.coinsSpent += loadoutPrice(next) - loadoutPrice(this.loadout);
+    this.loadout = next;
+    this.syncHud();
+  }
+
   /** Replaces the loadout without telling the server. Used when a save is refused. */
   setLoadout(loadout) {
-    this.loadout = cloneLoadout(loadout);
-    this.syncHud();
+    this.swapLoadout(cloneLoadout(loadout));
     if (this.state === 'upgrades' || this.state === 'weapon') this.render();
   }
 
   commitLoadout(next) {
     if (next === this.loadout) return;
-    this.loadout = next;
-    this.syncHud();
+    this.swapLoadout(next);
     this.onLoadout(next);
   }
 
@@ -474,6 +510,7 @@ export class SpaceShooterGame {
         phase: aimed ? 0 : Math.random() * 6,
         points: DART_POINTS,
         xp: DART_XP,
+        coins: DART_COINS,
       });
     }
     this.spawnTimer = randomBetween(2.5, 4.5);
@@ -627,20 +664,21 @@ export class SpaceShooterGame {
     this.syncFocus();
   }
 
-  /** Mounts the focused gun and stays on the banners. A locked gun is left alone. */
+  /** Mounts the focused gun and stays on the banners. A gun not bought yet is left alone. */
   equipHero() {
     const gunId = GUN_ORDER[this.heroIndex];
-    const result = equip(this.loadout, this.level, gunId);
+    const result = equip(this.loadout, gunId);
     if (!result.ok) return;
     this.commitLoadout(result.loadout);
     this.syncFocus();
     this.render();
   }
 
+  /** Opens the focused gun's nodes. A gun whose level is reached is bought first when the coins cover it. */
   confirmHero() {
     const gunId = GUN_ORDER[this.heroIndex];
-    if (!isUnlocked(gunId, this.level)) return;
-    const result = equip(this.loadout, this.level, gunId);
+    const bought = buyGun(this.loadout, this.level, this.coins, gunId);
+    const result = equip(bought.ok ? bought.loadout : this.loadout, gunId);
     if (!result.ok) return;
     this.commitLoadout(result.loadout);
     this.pathGun = gunId;
@@ -684,7 +722,7 @@ export class SpaceShooterGame {
     const stat = STAT_ORDER[this.statIndex];
     const rank = this.loadout.ranks[this.pathGun][stat];
     if (this.nodeIndex !== rank) return;
-    const result = claim(this.loadout, this.level, this.pathGun, stat);
+    const result = claim(this.loadout, this.coins, this.pathGun, stat);
     if (!result.ok) return;
     this.commitLoadout(result.loadout);
     this.nodeIndex = this.nextNode(this.pathGun, stat);
@@ -769,6 +807,7 @@ export class SpaceShooterGame {
     if (index === -1) return;
     this.addScore(enemy.points);
     this.addXp(enemy.xp ?? 0);
+    this.addCoins(enemy.coins ?? 0);
     this.enemies.splice(index, 1);
   }
 
@@ -869,17 +908,26 @@ export class SpaceShooterGame {
   }
 
   drawLevel() {
-    const label = `LV ${this.level}`;
-    drawText(this.ctx, label, this.canvas.width - 4 - textWidth(label), 4);
+    drawText(this.ctx, `LV ${this.level}`, 4, 4);
   }
 
-  /** Gun banners in a row. A locked gun is ghosted, with a lock on its icon. */
+  /** Coin plus the balance in 3×5 digits. `right` is the row's right edge. */
+  paintBalance(right, top) {
+    const width = COIN[0].length + 1 + smallNumberWidth(this.coins);
+    const left = right - width;
+    drawSprite(this.ctx, COIN, left, top);
+    drawSmallNumber(this.ctx, this.coins, left + COIN[0].length + 1, top);
+    return left;
+  }
+
+  /** Gun banners in a row. A gun not bought yet is ghosted. Below its level it also has a lock. */
   renderHeroes() {
     this.clearMenu();
     const { ctx, canvas } = this;
     if (!canvas.width || !canvas.height) return;
     this.drawCentered('UPGRADES', 4);
     this.drawLevel();
+    this.paintBalance(canvas.width - 4, 4);
     const pad = 8;
     const gap = 6;
     const bannerW = Math.max(20, Math.floor((canvas.width - pad * 2 - gap * 2) / 3));
@@ -889,7 +937,7 @@ export class SpaceShooterGame {
       const left = pad + index * (bannerW + gap);
       const locked = !isUnlocked(gunId, this.level);
       const focused = index === this.heroIndex;
-      ctx.globalAlpha = locked ? GHOST_ALPHA * 2 : 1;
+      ctx.globalAlpha = isOwned(this.loadout, gunId) ? 1 : GHOST_ALPHA * 2;
       const icon = GUN_ICON[gunId];
       const iconX = left + Math.floor((bannerW - icon[0].length) / 2);
       drawSprite(ctx, icon, iconX, top + 3);
@@ -901,14 +949,16 @@ export class SpaceShooterGame {
       if (locked) drawSprite(ctx, LOCK, left + bannerW - LOCK[0].length - 2, top + 2);
     });
     const focused = GUN_ORDER[this.heroIndex];
-    const open = isUnlocked(focused, this.level);
+    const open = isOwned(this.loadout, focused);
     const hintY = top + bannerH + 6;
-    this.drawCentered(open ? 'UP DOWN EQUIPS' : `LEVEL ${GUNS[focused].unlockLevel} REQUIRED`, hintY);
+    if (open) this.drawCentered('UP DOWN EQUIPS', hintY);
+    else if (isUnlocked(focused, this.level)) this.drawCentered(`COSTS ${GUNS[focused].price}`, hintY);
+    else this.drawCentered(`LEVEL ${GUNS[focused].unlockLevel} REQUIRED`, hintY);
     if (open) this.drawCentered('SPACE OPENS', hintY + 8);
     this.drawWrapped(GUN_BLURB[focused], Math.max(hintY + (open ? 20 : 12), canvas.height - 28));
   }
 
-  /** One gun's rows. Filled nodes are bought. The next node opens at its level. */
+  /** One gun's rows. Filled nodes are bought. The next node is solid once the coins cover it. */
   renderWeapon() {
     this.clearMenu();
     const { ctx, canvas } = this;
@@ -920,6 +970,7 @@ export class SpaceShooterGame {
     drawSprite(ctx, icon, left, 4);
     drawText(ctx, title, left + icon[0].length + 3, 4);
     this.drawLevel();
+    this.paintBalance(canvas.width - 4, 4);
     STAT_ORDER.forEach((stat, row) => {
       const y = 20 + row * 16;
       drawSprite(ctx, STAT_ICON[stat], 6, y);
@@ -929,7 +980,7 @@ export class SpaceShooterGame {
       for (let i = 0; i < cap; i++) {
         const center = 58 + i * 14;
         const owned = i < rank;
-        const open = i === rank && this.level >= nodeLevel(this.pathGun, stat, i);
+        const open = i === rank && this.coins >= nodePrice(stat, i);
         if (owned) this.fillSquare(center, y + 2, 7);
         else {
           ctx.globalAlpha = open ? 1 : GHOST_ALPHA * 2;
@@ -941,7 +992,7 @@ export class SpaceShooterGame {
     });
     const stat = STAT_ORDER[this.statIndex];
     const rank = this.loadout.ranks[this.pathGun][stat];
-    const detail = `${nodeBlurb(this.pathGun, stat, this.nodeIndex)} ${nodeStatus(this.pathGun, stat, this.nodeIndex, rank, this.level)}`;
+    const detail = `${nodeBlurb(this.pathGun, stat, this.nodeIndex)} ${nodeStatus(stat, this.nodeIndex, rank)}`;
     this.drawWrapped(detail, Math.max(70, canvas.height - 28));
   }
 
@@ -1029,6 +1080,14 @@ export class SpaceShooterGame {
     }
     ctx.globalAlpha = 1;
     drawNumber(ctx, this.score, 5, canvas.width - 2, 1);
+    // 2px under the score. The row hangs into the playfield; a ship at the top can cover it.
+    const balanceTop = 12;
+    const balanceRight = canvas.width - 2;
+    const balanceLeft = balanceRight - (COIN[0].length + 1 + smallNumberWidth(this.coins));
+    const clearLeft = Math.min(balanceLeft, this.coinClearLeft ?? balanceLeft);
+    ctx.clearRect(clearLeft, balanceTop, balanceRight - clearLeft, COIN.length);
+    this.coinClearLeft = balanceLeft;
+    this.paintBalance(balanceRight, balanceTop);
 
     // Same clear as the top bar: the LCD smear must not eat the level digits.
     const bandTop = canvas.height - HUD_HEIGHT;
@@ -1084,32 +1143,25 @@ export class SpaceShooterGame {
   }
 
   /**
-   * Map and upgrade buttons in the bottom band, one on each side of the bar.
-   * The letter is a label only. A cluster that would touch the bar is skipped.
+   * Map and upgrade buttons together on the lower left. The letter is a label
+   * only. The pair is skipped when it would touch the bar.
    */
   renderCornerIcons(bar) {
-    const { ctx, canvas } = this;
-    const iconTop = canvas.height - 1 - MAP.length;
+    const { ctx } = this;
+    const iconTop = this.canvas.height - 1 - MAP.length;
     const keyTop = iconTop + Math.floor((MAP.length - KEYCAP_H) / 2);
 
     const mapLeft = 2;
     const keyMLeft = mapLeft + MAP[0].length + 1;
-    const left = { left: mapLeft, right: keyMLeft + KEYCAP_W };
+    const upgradeLeft = keyMLeft + KEYCAP_W + 2;
+    const keyULeft = upgradeLeft + UPGRADE[0].length + 1;
+    const cluster = { left: mapLeft, right: keyULeft + KEYCAP_W };
+    if (bar && cluster.left <= bar.right && cluster.right >= bar.left) return;
 
-    const keyURight = canvas.width - 2;
-    const keyULeft = keyURight - KEYCAP_W;
-    const upgradeLeft = keyULeft - 1 - UPGRADE[0].length;
-    const right = { left: upgradeLeft, right: keyURight };
-
-    const meets = (cluster, span) => span && cluster.left <= span.right && cluster.right >= span.left;
-    if (!meets(left, bar) && !meets(left, right)) {
-      drawSprite(ctx, MAP, mapLeft, iconTop);
-      drawKeycap(ctx, 'M', keyMLeft, keyTop);
-    }
-    if (!meets(right, bar) && !meets(right, left)) {
-      drawSprite(ctx, UPGRADE, upgradeLeft, iconTop);
-      drawKeycap(ctx, 'U', keyULeft, keyTop);
-    }
+    drawSprite(ctx, MAP, mapLeft, iconTop);
+    drawKeycap(ctx, 'M', keyMLeft, keyTop);
+    drawSprite(ctx, UPGRADE, upgradeLeft, iconTop);
+    drawKeycap(ctx, 'U', keyULeft, keyTop);
   }
 
   /** 1px frame. The top edge stops around the level; the other three sides stay closed. */
