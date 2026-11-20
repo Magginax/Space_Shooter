@@ -124,8 +124,8 @@ There is no "forgot password" (no real e-mail): an admin resets it in
 
 The game only starts for logged-in players or guests (**Guest** mode on the login page).
 Guests can play, but only logged-in players may save scores: that rule is in
-the database, because the check in the browser can be bypassed. A direct link
-to `#game` sends visitors to the login page and back to the game afterwards.
+the database, because the check in the browser can be bypassed. A direct visit
+to the game page sends visitors to the login page and back to the game afterwards.
 
 ```js
 import { auth } from '../services/account.js';

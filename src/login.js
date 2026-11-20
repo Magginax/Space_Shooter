@@ -38,7 +38,7 @@ scene.start();
 // Where to go after logging in: the page that sent the player here (?next=...),
 // but only if it is on this site, see safeReturnPath().
 const returnPath = safeReturnPath(new URLSearchParams(location.search).get('next'), location.origin);
-const gamePath = returnPath ?? new URL('../#game', location.href).pathname + '#game';
+const gamePath = returnPath ?? new URL('game.html', location.href).pathname;
 const RETURN_DELAY_MS = 1500; // long enough to enjoy "STAGE CLEAR"
 playLink.href = gamePath;
 

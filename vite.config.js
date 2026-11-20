@@ -65,6 +65,7 @@ export default defineConfig({
     rolldownOptions: {
       input: {
         main: resolve(import.meta.dirname, 'index.html'),
+        game: resolve(import.meta.dirname, 'views/game.html'),
         leaderboard: resolve(import.meta.dirname, 'views/leaderboard.html'),
         login: resolve(import.meta.dirname, 'views/login.html'),
         error: ERROR_PAGE,

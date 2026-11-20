@@ -15,7 +15,13 @@
     <main class="desk">
         <a class="back-link" href="../">&lt; BACK</a>
 
-        <!-- The handheld console. Only the form inside the screen is interactive;
+        <p class="player-bar" data-testid="player-bar" hidden>
+            Playing as <strong data-testid="player-name"></strong>
+            <span data-testid="guest-note" hidden>(guest: scores are not saved)</span>
+            <a data-testid="account-link" href="./login.html">Account</a>
+        </p>
+
+        <!-- The handheld console. Only the game inside the screen is interactive;
            the rest (LED, speaker, buttons) is decoration. -->
         <div class="device">
             <div class="device-top" aria-hidden="true">
@@ -25,19 +31,20 @@
             </div>
 
             <div class="bezel">
-                <!-- This is the div where the game should be -->
                 <div class="screen" data-testid="screen">
-                    <!-- <div class="lcd">
-                        <canvas data-testid="lcd-canvas" aria-hidden="true"></canvas>
+                    <!-- .screen > .lcd > canvas: the game sizes itself from the screen. -->
+                    <div class="lcd" hidden>
+                        <canvas id="game-canvas" data-testid="game-canvas" data-state="idle" data-lives="3" data-score="0" data-level="0" data-xp="0" data-gun="blaster" data-row="" data-locked=""></canvas>
                     </div>
-                    <p class="banner" data-testid="banner" aria-hidden="true" hidden></p>
-
-                    <section class="panel" data-testid="login" data-state="idle" aria-labelledby="login-title">
-                        Lorem ipsum dolor, sit amet consectetur adipisicing elit. Dolorum repellendus ab perspiciatis
-                        iste cumque rem odio magnam, aliquam nesciunt cum magni. Nemo id odit corrupti amet ipsa cumque
-                        provident molestiae.
-                    </section> -->
-
+                    <button type="button" class="start-game" data-testid="start-game" hidden>PLAY</button>
+                    <button type="button" class="upgrade-back" data-testid="upgrade-back" hidden>BACK</button>
+                    <div class="abandon" data-testid="abandon-prompt" data-choice="no" hidden>
+                        <p>Abandon this run?</p>
+                        <p class="abandon-choices">
+                            <span data-testid="abandon-no">NO</span>
+                            <span data-testid="abandon-yes">YES</span>
+                        </p>
+                    </div>
                     <div class="glare" aria-hidden="true"></div>
                 </div>
             </div>

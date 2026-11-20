@@ -116,11 +116,11 @@ test.describe('Login page', () => {
 });
 
 test.describe('Login page: back to the game', () => {
-  test('after login it returns to the page in ?next=', async ({ homePage, loginPage }) => {
-    await loginPage.open({ next: '/#game' });
+  test('after login it returns to the page in ?next=', async ({ gamePage, loginPage }) => {
+    await loginPage.open({ next: '/views/game.html' });
     await loginPage.logIn();
     await loginPage.expectStatus('RETURNING TO GAME...');
-    await homePage.expectOnGame();
+    await gamePage.expectOnGame();
   });
 
   test('?next= pointing to another site is ignored', async ({ loginPage }) => {
@@ -129,15 +129,15 @@ test.describe('Login page: back to the game', () => {
     await loginPage.expectState('signed-in');
     await loginPage.waitLongerThanReturnDelay();
     await loginPage.expectStillHere();
-    await loginPage.expectPlayLinkTo('/#game');
+    await loginPage.expectPlayLinkTo('/views/game.html');
   });
 
-  test('PLAY AS GUEST opens the game in guest mode, without asking the server', async ({ supabase, homePage, loginPage }) => {
-    await loginPage.open({ next: '/#game' });
+  test('PLAY AS GUEST opens the game in guest mode, without asking the server', async ({ supabase, gamePage, loginPage }) => {
+    await loginPage.open({ next: '/views/game.html' });
     await loginPage.playAsGuest();
 
-    await homePage.expectOnGame();
-    await homePage.expectPlayingAs('guest', { guest: true });
+    await gamePage.expectOnGame();
+    await gamePage.expectPlayingAs('guest', { guest: true });
     supabase.expectNoLoginRequest();
   });
 });

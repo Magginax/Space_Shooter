@@ -1,56 +1,56 @@
 import { test } from './fixtures.js';
 
 test.describe('Space shooter', () => {
-  test('a guest starts idle, then scores by firing', async ({ supabase, homePage }) => {
+  test('a guest starts idle, then scores by firing', async ({ supabase, gamePage }) => {
     await supabase.guestBeforeLoad();
-    await homePage.openGameLink();
+    await gamePage.open();
 
-    await homePage.expectIdleGame();
-    await homePage.startGame();
-    await homePage.expectMap();
-    await homePage.enterLevel();
-    await homePage.expectGameRunning();
+    await gamePage.expectIdleGame();
+    await gamePage.startGame();
+    await gamePage.expectMap();
+    await gamePage.enterLevel();
+    await gamePage.expectGameRunning();
 
-    await homePage.holdFire();
-    await homePage.expectScoreAbove(0);
-    await homePage.expectXpAbove(0);
-    await homePage.expectCoinsAbove(0);
-    await homePage.releaseFire();
+    await gamePage.holdFire();
+    await gamePage.expectScoreAbove(0);
+    await gamePage.expectXpAbove(0);
+    await gamePage.expectCoinsAbove(0);
+    await gamePage.releaseFire();
   });
 
-  test('abandoning a run returns to the level it was on', async ({ supabase, homePage }) => {
+  test('abandoning a run returns to the level it was on', async ({ supabase, gamePage }) => {
     await supabase.guestBeforeLoad();
-    await homePage.openGameLink();
+    await gamePage.open();
 
-    await homePage.startGame();
-    await homePage.enterLevel();
-    await homePage.expectGameRunning();
-    await homePage.abandonRun();
-    await homePage.expectMap('level');
+    await gamePage.startGame();
+    await gamePage.enterLevel();
+    await gamePage.expectGameRunning();
+    await gamePage.abandonRun();
+    await gamePage.expectMap('level');
   });
 
-  test('U opens the guns, a locked gun shows its level, and Back returns to the map', async ({ supabase, homePage }) => {
+  test('U opens the guns, a locked gun shows its level, and Back returns to the map', async ({ supabase, gamePage }) => {
     await supabase.guestBeforeLoad();
-    await homePage.openGameLink();
+    await gamePage.open();
 
-    await homePage.expectIdleGame();
-    await homePage.openUpgrades();
-    await homePage.expectUpgrades();
-    await homePage.focusBeam();
-    await homePage.clickBack();
-    await homePage.expectMap();
+    await gamePage.expectIdleGame();
+    await gamePage.openUpgrades();
+    await gamePage.expectUpgrades();
+    await gamePage.focusBeam();
+    await gamePage.clickBack();
+    await gamePage.expectMap();
   });
 
-  test('U during a run asks to abandon, and Yes opens the guns', async ({ supabase, homePage }) => {
+  test('U during a run asks to abandon, and Yes opens the guns', async ({ supabase, gamePage }) => {
     await supabase.guestBeforeLoad();
-    await homePage.openGameLink();
+    await gamePage.open();
 
-    await homePage.startGame();
-    await homePage.enterLevel();
-    await homePage.expectGameRunning();
-    await homePage.abandonToUpgrades();
-    await homePage.expectUpgrades();
-    await homePage.closeUpgrades();
-    await homePage.expectMap('level');
+    await gamePage.startGame();
+    await gamePage.enterLevel();
+    await gamePage.expectGameRunning();
+    await gamePage.abandonToUpgrades();
+    await gamePage.expectUpgrades();
+    await gamePage.closeUpgrades();
+    await gamePage.expectMap('level');
   });
 });
