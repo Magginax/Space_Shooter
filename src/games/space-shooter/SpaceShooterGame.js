@@ -1,7 +1,7 @@
 import { GameLoop, Input, clamp, randomBetween, rectsOverlap } from '../../engine/index.js';
 import { COIN, DART, FONT_H, GHOST_ALPHA, HEART, KEYCAP_H, KEYCAP_W, MAP, SHIP, UPGRADE, drawKeycap, drawNumber, drawSmallNumber, drawSprite, drawText, smallNumberWidth, spriteBox, textWidth } from '../../effects/lcdArt.js';
 import { grantXp, progressFromXp, xpForLevel } from './experience.js';
-import { EDGES, NODES, START_NODE, levelIdAt, step } from './levelMap.js';
+import { EDGES, LEVELS, NODES, PLANETS, START_NODE, START_PLANET, levelIdAt, step } from './levelMap.js';
 import {
   GUN_ORDER,
   GUNS,
@@ -39,14 +39,10 @@ const DART_POINTS = 50;
 const DART_XP = 50;
 const DART_COINS = 1;
 const BLINK_TIME = 1.2;
-// Experience bar: one framed track, filled from the left like a retro gauge.
 const BAR_TRACK_W = 55;
 const BAR_TRACK_H = 3;
 const BAR_BORDER = 1;
-// How far the digit's notch extends past the glyph. It opens the top border
-// and the upper fill only; the bottom row of the track stays connected.
 const BAR_NOTCH_X = 2;
-// Seconds of live play after "No" before M can pause the run again.
 const ABANDON_LOCK = 3;
 const KEY_DIRECTION = {
   ArrowUp: 'up',
@@ -66,6 +62,32 @@ const STAT_ICON = {
   pierce: ['#...#', '.#.#.', '..#..', '.#.#.', '#...#'],
 };
 const LOCK = ['.###.', '#...#', '#####', '#####', '#####'];
+
+// Login boss, each pixel doubled so the eyes stay readable on the east node.
+const BOSS = ['.###.', '#.#.#', '#####', '.###.', '.#.#.'].flatMap((row) => {
+  const wide = [...row].map((px) => px + px).join('');
+  return [wide, wide];
+});
+const BOSS_R = 5;
+const SKULL = ['.###.', '#.#.#', '#####', '.###.', '.#.#.'];
+const CHEV_L = ['..#..', '.#...', '#....', '.#...', '..#..'];
+const CHEV_R = ['..#..', '...#.', '....#', '...#.', '..#..'];
+const PAD = [
+  '....#....',
+  '...###...',
+  '....#....',
+  '.#..#..#.',
+  '#########',
+  '.#..#..#.',
+  '....#....',
+  '...###...',
+  '....#....',
+];
+
+const GO = ['#####', '.###.', '..#..'];
+const WAVE_ICON = ['.....', '#.#.#', '.....', '#.#.#', '.....'];
+const PIP_COUNT = 5;
+const PIP_SIZE = 3;
 
 const DEBUG_ROWS = [
   { id: 'level1', label: 'LEVEL PLUS 1' },
@@ -88,8 +110,8 @@ const DEBUG_ROWS = [
  * States "idle" -> "map" -> "running" -> "over", "paused" over a run,
  * "upgrades" for the gun banners, and "weapon" for one gun's nodes.
  * Mirrored on the canvas as data-state, with data-lives, data-score,
- * data-level, data-xp, data-coins, data-node, data-gun, data-row, and
- * data-locked, so tests never read pixels.
+ * data-level, data-xp, data-coins, data-node, data-planet, data-level-name,
+ * data-gun, data-row, and data-locked, so tests never read pixels.
  */
 export class SpaceShooterGame {
   constructor(canvas, { onScore = () => {}, onGameOver = () => {}, onProgress = () => {}, onCoins = () => {}, onLoadout = () => {}, level = 0, xp = 0, coinsEarned = 0, coinsSpent = 0, loadout = null, prompt = null, backButton = null } = {}) {
@@ -108,6 +130,7 @@ export class SpaceShooterGame {
     this.prompt = prompt;
     this.backButton = backButton;
     this.nodeId = START_NODE;
+    this.planetIndex = START_PLANET;
     this.cleared = new Set();
     this.abandonLock = 0;
     this.choice = 'no';
@@ -136,7 +159,7 @@ export class SpaceShooterGame {
     this.resize();
     this.reset();
     this.setState('idle');
-    this.canvas.dataset.node = this.nodeId;
+    this.syncMap();
     this.syncFocus();
     this.render();
   }
@@ -334,7 +357,7 @@ export class SpaceShooterGame {
     if (this.state === 'running' || this.state === 'map') return;
     this.choice = 'no';
     this.syncPrompt(false);
-    this.canvas.dataset.node = this.nodeId;
+    this.syncMap();
     this.setState('map');
     this.syncFocus();
     this.loop.start();
@@ -618,17 +641,36 @@ export class SpaceShooterGame {
         this.nodeId = step(this.nodeId, direction, this.cleared);
         continue;
       }
+      if (key === 'q' || key === 'Q') {
+        this.shiftPlanet(-1);
+        continue;
+      }
+      if (key === 'e' || key === 'E') {
+        this.shiftPlanet(1);
+        continue;
+      }
       if (key === 'm' || key === 'M' || key === 'u' || key === 'U') {
         this.openUpgrades();
         break;
       }
       if (key === 'Enter' || key === ' ') {
-        this.canvas.dataset.node = this.nodeId;
         this.confirmLevel();
         break;
       }
     }
+    this.syncMap();
+  }
+
+  shiftPlanet(delta) {
+    const next = this.planetIndex + delta;
+    if (next < 0 || next >= PLANETS.length) return;
+    this.planetIndex = next;
+  }
+
+  syncMap() {
     this.canvas.dataset.node = this.nodeId;
+    this.canvas.dataset.planet = PLANETS[this.planetIndex].id;
+    this.canvas.dataset.levelName = LEVELS[this.nodeId]?.name ?? '';
   }
 
   updatePrompt() {
@@ -1004,7 +1046,7 @@ export class SpaceShooterGame {
     ctx.fillRect(left + width - 1, top, 1, height);
   }
 
-  /** Path, nodes, and the cursor. No scenery. */
+  /** Path, nodes, the planet row, and the level description. No scenery. */
   renderMap() {
     const { ctx, canvas } = this;
     const { width, height } = canvas;
@@ -1016,28 +1058,131 @@ export class SpaceShooterGame {
     ctx.fillStyle = INK;
 
     const at = (id) => this.mapPoint(NODES[id], width, height);
-    for (const [from, to] of EDGES) {
-      const a = at(from);
-      const b = at(to);
-      const x = Math.min(a.x, b.x);
-      const y = Math.min(a.y, b.y);
-      ctx.fillRect(x, y, Math.abs(a.x - b.x) || 1, Math.abs(a.y - b.y) || 1);
-    }
+    const bossAt = at('east');
+    for (const [from, to] of EDGES) this.drawMapEdge(at(from), at(to), bossAt);
 
     for (const node of Object.values(NODES)) {
-      const { x, y } = at(node.id);
-      if (node.levelId) this.strokeSquare(x, y, 7);
-      else this.fillSquare(x, y, 3);
+      if (node.id === 'east') continue;
+      const point = at(node.id);
+      if (node.levelId) this.strokeSquare(point.x, point.y, 7);
+      else this.fillSquare(point.x, point.y, 3);
     }
+    drawSprite(ctx, BOSS, bossAt.x - BOSS_R, bossAt.y - BOSS_R);
     const cursor = at(this.nodeId);
-    this.fillSquare(cursor.x, cursor.y, 5);
+    if (this.nodeId === 'east') this.strokeSquare(cursor.x, cursor.y, 12);
+    else this.fillSquare(cursor.x, cursor.y, 5);
+
+    this.drawLevel();
+    this.paintBalance(width - 4, 4);
+    this.renderPlanetTitle();
+    this.renderMapKeys();
+    this.renderDetail();
+  }
+
+  mapBox(width, height) {
+    return {
+      x: Math.round(26 * width / 185),
+      y: Math.round(20 * height / 104),
+      w: Math.round(134 * width / 185),
+      h: Math.round(65 * height / 104),
+    };
   }
 
   mapPoint(node, width, height) {
-    const pad = 14;
-    const x = pad + node.x * ((width - pad * 2) / 3);
-    const y = pad + (node.y - 1) * ((height - pad * 2) / 2);
-    return { x: Math.round(x), y: Math.round(y) };
+    const box = this.mapBox(width, height);
+    return {
+      x: Math.round(box.x + (node.x * box.w) / 3),
+      y: Math.round(box.y + ((node.y - 1) * box.h) / 2),
+    };
+  }
+
+  // The path stops on the boss's edge so the line does not cut the eyes.
+  drawMapEdge(a, b, boss) {
+    let x0 = a.x;
+    let y0 = a.y;
+    let x1 = b.x;
+    let y1 = b.y;
+    const trim = (which) => {
+      const point = which === 0 ? a : b;
+      const other = which === 0 ? b : a;
+      if (point.x !== boss.x || point.y !== boss.y) return;
+      const toward = (from, to) => from + Math.sign(to - from) * BOSS_R;
+      if (other.x !== point.x) {
+        const next = toward(point.x, other.x);
+        if (which === 0) x0 = next;
+        else x1 = next;
+      } else if (other.y !== point.y) {
+        const next = toward(point.y, other.y);
+        if (which === 0) y0 = next;
+        else y1 = next;
+      }
+    };
+    trim(0);
+    trim(1);
+    const x = Math.min(x0, x1);
+    const y = Math.min(y0, y1);
+    const w = Math.abs(x1 - x0);
+    const h = Math.abs(y1 - y0);
+    if (w === 0 && h === 0) return;
+    this.ctx.fillRect(x, y, w || 1, h || 1);
+  }
+
+  renderPlanetTitle() {
+    const { ctx, canvas } = this;
+    const label = `PLANET: ${PLANETS[this.planetIndex].name}`;
+    const left = Math.round((canvas.width - textWidth(label)) / 2);
+    const y = 4;
+    ctx.globalAlpha = this.planetIndex > 0 ? 1 : GHOST_ALPHA * 2;
+    drawSprite(ctx, CHEV_L, left - 3 - CHEV_L[0].length, y);
+    ctx.globalAlpha = this.planetIndex < PLANETS.length - 1 ? 1 : GHOST_ALPHA * 2;
+    drawSprite(ctx, CHEV_R, left + textWidth(label) + 3, y);
+    ctx.globalAlpha = 1;
+    drawText(ctx, label, left, y);
+  }
+
+  /** Arrows move, the key starts the level. Bottom-left, 3px off the corner. */
+  renderMapKeys() {
+    const { ctx, canvas } = this;
+    const top = canvas.height - 3 - PAD.length;
+    drawSprite(ctx, PAD, 4, top);
+    const key = 4 + PAD[0].length + 2;
+    ctx.fillRect(key, top, 9, 1);
+    ctx.fillRect(key, top + 8, 9, 1);
+    ctx.fillRect(key, top, 1, 9);
+    ctx.fillRect(key + 8, top, 1, 9);
+    drawSprite(ctx, GO, key + 2, top + 4);
+  }
+
+  /** Skull, waves, and the level name. Always on screen, bottom-right. */
+  renderDetail() {
+    const { canvas } = this;
+    const info = LEVELS[this.nodeId];
+    if (!info) return;
+    const right = canvas.width - 4;
+    const nameTop = canvas.height - 4 - FONT_H;
+    drawText(this.ctx, info.name, right - textWidth(info.name), nameTop);
+    const gap = 2;
+    const waveTop = nameTop - gap - WAVE_ICON.length;
+    const skullTop = waveTop - gap - SKULL.length;
+    this.drawStatRow(SKULL, info.difficulty, right, skullTop);
+    this.drawStatRow(WAVE_ICON, info.waves, right, waveTop);
+  }
+
+  drawStatRow(icon, filled, right, top) {
+    const pipsW = PIP_COUNT * PIP_SIZE + (PIP_COUNT - 1);
+    const left = right - (icon[0].length + 2 + pipsW);
+    drawSprite(this.ctx, icon, left, top);
+    this.drawPips(filled, left + icon[0].length + 2 + pipsW, top + 1);
+  }
+
+  drawPips(filled, right, top) {
+    let x = right - (PIP_COUNT * PIP_SIZE + (PIP_COUNT - 1));
+    for (let i = 0; i < PIP_COUNT; i++) {
+      this.ctx.globalAlpha = i < filled ? 1 : GHOST_ALPHA * 2;
+      this.ctx.fillRect(x, top, PIP_SIZE, PIP_SIZE);
+      x += PIP_SIZE + 1;
+    }
+    this.ctx.globalAlpha = 1;
   }
 
   fillSquare(x, y, size) {
@@ -1108,7 +1253,6 @@ export class SpaceShooterGame {
     if (canvas.width < outerW + 4) return null;
 
     const left = Math.round((canvas.width - outerW) / 2);
-    // Halfway between the playfield floor and the bottom of the screen.
     const mid = (this.groundY() + canvas.height) / 2;
     const top = Math.round(mid - outerH / 2);
     const innerLeft = left + BAR_BORDER;
@@ -1117,13 +1261,10 @@ export class SpaceShooterGame {
     const numberW = smallNumberWidth(this.level);
     const numberH = 5;
     const numberLeft = Math.round(left + outerW / 2 - numberW / 2);
-    // Three rows above the frame. The notch still wraps the digit; the bottom
-    // row of the track stays intact.
     const numberTop = top - 3;
     const notchLeft = numberLeft - BAR_NOTCH_X;
     const notchTop = numberTop - 1;
     const notchW = numberW + BAR_NOTCH_X * 2;
-    // Stop above the last track row so the fill stays connected underneath.
     const notchH = innerTop + BAR_TRACK_H - 1 - notchTop;
 
     ctx.globalAlpha = GHOST_ALPHA;

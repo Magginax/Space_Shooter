@@ -733,6 +733,44 @@ test.describe('Space shooter rules', () => {
       tap('m');
       expect(game.state).toBe('paused');
     });
+
+    test('Q and E change the planet and leave the node alone', () => {
+      game.openMap();
+      const node = game.nodeId;
+      expect(game.canvas.dataset.planet).toBe('vega');
+
+      tap('q');
+      expect(game.canvas.dataset.planet).toBe('io');
+      expect(game.nodeId).toBe(node);
+      tap('q');
+      expect(game.canvas.dataset.planet).toBe('io');
+
+      tap('e');
+      tap('e');
+      expect(game.canvas.dataset.planet).toBe('ceres');
+      tap('e');
+      expect(game.canvas.dataset.planet).toBe('ceres');
+      expect(game.nodeId).toBe(node);
+    });
+
+    test('an arrow still steps after a planet change', () => {
+      game.openMap();
+      tap('e');
+      tap('ArrowRight');
+      expect(game.canvas.dataset.planet).toBe('ceres');
+      expect(game.nodeId).toBe('bend');
+    });
+
+    test('the level label is the name of the node under the cursor', () => {
+      game.openMap();
+      expect(game.canvas.dataset.levelName).toBe('ALPHA');
+
+      tap('ArrowRight');
+      expect(game.canvas.dataset.levelName).toBe('FORK');
+
+      tap('q');
+      expect(game.canvas.dataset.levelName).toBe('FORK');
+    });
   });
 
   test.describe('guns', () => {
