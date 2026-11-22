@@ -97,11 +97,17 @@ level and lifetime experience (`xp`). The game loads them at login and saves
 the new total after each kill (`set_xp`). The database rules (RLS) decide
 what each role may do, see `supabase/schema.sql`.
 
+The profile also holds the coin wallet and the guns. A kill adds a coin and
+saves the earned total (`set_coins_earned`). A gun opens at its level and is
+then bought with coins, and so are its upgrades. `set_loadout` takes the
+price from the balance (`coins_earned` minus `coins_spent`).
+
 One-time setup in the Supabase dashboard:
 
-1. **SQL Editor**: run the blocks added on 2026-10-14, 2026-10-15, and
-   2026-11-11 from `supabase/schema.sql`, in order (or the whole file on a
-   new project). The 2026-11-11 block adds `xp` and `level`; without it,
+1. **SQL Editor**: run the blocks added on 2026-10-14, 2026-10-15,
+   2026-11-11, 2026-11-14 (both), and 2026-11-20 from `supabase/schema.sql`,
+   in order (or the whole file on a new project). The 2026-11-11 block adds
+   `xp` and `level`, and the 2026-11-20 block adds the coins; without them,
    login cannot load a profile.
 2. **Authentication → Sign In / Providers → Email**: turn **off**
    "Confirm email" (logins use `<username>@players.space-shooter.local`,
@@ -118,12 +124,12 @@ There is no "forgot password" (no real e-mail): an admin resets it in
 
 The game only starts for logged-in players or guests (**Guest** mode on the login page).
 Guests can play, but only logged-in players may save scores: that rule is in
-the database, because the check in the browser can be bypassed. A direct link
-to `#game` sends visitors to the login page and back to the game afterwards.
+the database, because the check in the browser can be bypassed. A direct visit
+to the game page sends visitors to the login page and back to the game afterwards.
 
 ```js
 import { auth } from '../services/account.js';
-const player = await auth.getCurrentPlayer(); // { id, username, role, level, xp } or null
+const player = await auth.getCurrentPlayer(); // { id, username, role, level, xp, coinsEarned, coinsSpent, loadout } or null
 ```
 
 ## GitHub Pages

@@ -1,7 +1,7 @@
 import { GameLoop, Input, clamp, randomBetween, rectsOverlap } from '../../engine/index.js';
-import { DART, FONT_H, GHOST_ALPHA, HEART, KEYCAP_H, KEYCAP_W, MAP, SHIP, UPGRADE, drawKeycap, drawNumber, drawSmallNumber, drawSprite, drawText, smallNumberWidth, spriteBox, textWidth } from '../../effects/lcdArt.js';
+import { COIN, DART, FONT_H, GHOST_ALPHA, HEART, KEYCAP_H, KEYCAP_W, MAP, SHIP, UPGRADE, drawKeycap, drawNumber, drawSmallNumber, drawSprite, drawText, smallNumberWidth, spriteBox, textWidth } from '../../effects/lcdArt.js';
 import { grantXp, progressFromXp, xpForLevel } from './experience.js';
-import { EDGES, NODES, START_NODE, levelIdAt, step } from './levelMap.js';
+import { EDGES, LEVELS, NODES, PLANETS, START_NODE, START_PLANET, levelIdAt, step } from './levelMap.js';
 import {
   GUN_ORDER,
   GUNS,
@@ -9,13 +9,16 @@ import {
   STAT_ORDER,
   burstBox,
   GUN_BLURB,
+  buyGun,
   claim,
   cloneLoadout,
   cooldownFor,
   equip,
+  isOwned,
   isUnlocked,
+  loadoutPrice,
   nodeBlurb,
-  nodeLevel,
+  nodePrice,
   nodeStatus,
   spawnShots,
   statCap,
@@ -34,15 +37,12 @@ const SHIP_SPEED = 55;
 const DART_SPEED = 26;
 const DART_POINTS = 50;
 const DART_XP = 50;
+const DART_COINS = 1;
 const BLINK_TIME = 1.2;
-// Experience bar: one framed track, filled from the left like a retro gauge.
 const BAR_TRACK_W = 55;
 const BAR_TRACK_H = 3;
 const BAR_BORDER = 1;
-// How far the digit's notch extends past the glyph. It opens the top border
-// and the upper fill only; the bottom row of the track stays connected.
 const BAR_NOTCH_X = 2;
-// Seconds of live play after "No" before M can pause the run again.
 const ABANDON_LOCK = 3;
 const KEY_DIRECTION = {
   ArrowUp: 'up',
@@ -63,12 +63,40 @@ const STAT_ICON = {
 };
 const LOCK = ['.###.', '#...#', '#####', '#####', '#####'];
 
+// Login boss, each pixel doubled so the eyes stay readable on the east node.
+const BOSS = ['.###.', '#.#.#', '#####', '.###.', '.#.#.'].flatMap((row) => {
+  const wide = [...row].map((px) => px + px).join('');
+  return [wide, wide];
+});
+const BOSS_R = 5;
+const SKULL = ['.###.', '#.#.#', '#####', '.###.', '.#.#.'];
+const CHEV_L = ['..#..', '.#...', '#....', '.#...', '..#..'];
+const CHEV_R = ['..#..', '...#.', '....#', '...#.', '..#..'];
+const PAD = [
+  '....#....',
+  '...###...',
+  '....#....',
+  '.#..#..#.',
+  '#########',
+  '.#..#..#.',
+  '....#....',
+  '...###...',
+  '....#....',
+];
+
+const GO = ['#####', '.###.', '..#..'];
+const WAVE_ICON = ['.....', '#.#.#', '.....', '#.#.#', '.....'];
+const PIP_COUNT = 5;
+const PIP_SIZE = 3;
+
 const DEBUG_ROWS = [
   { id: 'level1', label: 'LEVEL PLUS 1' },
   { id: 'level5', label: 'LEVEL PLUS 5' },
   { id: 'beam', label: 'JUMP BEAM LV 5' },
   { id: 'pods', label: 'JUMP PODS LV 10' },
   { id: 'all', label: 'JUMP ALL LV 16' },
+  { id: 'coins100', label: 'COINS PLUS 100' },
+  { id: 'coins1000', label: 'COINS PLUS 1000' },
   { id: 'buy', label: 'BUY OPEN NODES' },
   { id: 'mount', label: 'MOUNT NEXT GUN' },
   { id: 'heal', label: 'HEAL' },
@@ -82,11 +110,11 @@ const DEBUG_ROWS = [
  * States "idle" -> "map" -> "running" -> "over", "paused" over a run,
  * "upgrades" for the gun banners, and "weapon" for one gun's nodes.
  * Mirrored on the canvas as data-state, with data-lives, data-score,
- * data-level, data-xp, data-node, data-gun, data-row, and data-locked,
- * so tests never read pixels.
+ * data-level, data-xp, data-coins, data-node, data-planet, data-level-name,
+ * data-gun, data-row, and data-locked, so tests never read pixels.
  */
 export class SpaceShooterGame {
-  constructor(canvas, { onScore = () => {}, onGameOver = () => {}, onProgress = () => {}, onLoadout = () => {}, level = 0, xp = 0, loadout = null, prompt = null, backButton = null } = {}) {
+  constructor(canvas, { onScore = () => {}, onGameOver = () => {}, onProgress = () => {}, onCoins = () => {}, onLoadout = () => {}, level = 0, xp = 0, coinsEarned = 0, coinsSpent = 0, loadout = null, prompt = null, backButton = null } = {}) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.wrapper = canvas.parentElement;
@@ -94,10 +122,15 @@ export class SpaceShooterGame {
     this.onScore = onScore;
     this.onGameOver = onGameOver;
     this.onProgress = onProgress;
+    this.onCoins = onCoins;
     this.onLoadout = onLoadout;
+    // Lifetime totals. Earned only goes up. Spent follows what the loadout holds.
+    this.coinsEarned = coinsEarned;
+    this.coinsSpent = coinsSpent;
     this.prompt = prompt;
     this.backButton = backButton;
     this.nodeId = START_NODE;
+    this.planetIndex = START_PLANET;
     this.cleared = new Set();
     this.abandonLock = 0;
     this.choice = 'no';
@@ -126,7 +159,7 @@ export class SpaceShooterGame {
     this.resize();
     this.reset();
     this.setState('idle');
-    this.canvas.dataset.node = this.nodeId;
+    this.syncMap();
     this.syncFocus();
     this.render();
   }
@@ -144,6 +177,17 @@ export class SpaceShooterGame {
     this.setProgress(grantXp(this.xp, amount).xp);
     this.syncHud();
     this.onProgress(this.xp);
+  }
+
+  /** The wallet. A new round does not clear it. */
+  get coins() {
+    return this.coinsEarned - this.coinsSpent;
+  }
+
+  addCoins(amount) {
+    this.coinsEarned += amount;
+    this.syncHud();
+    this.onCoins(this.coinsEarned);
   }
 
   reset() {
@@ -239,28 +283,35 @@ export class SpaceShooterGame {
     if (raised) this.onProgress(this.xp);
   }
 
+  /** A cheat still pays: the price is granted first, so the database accepts the save. */
+  grantAndCommit(next) {
+    const price = loadoutPrice(next) - loadoutPrice(this.loadout);
+    if (price > 0) this.addCoins(price);
+    this.commitLoadout(next);
+  }
+
+  /** Every node left on the guns already bought. */
   buyOpenNodes() {
     let loadout = this.loadout;
-    let changed = false;
-    for (const gun of GUN_ORDER) {
+    for (const gun of loadout.owned) {
       for (const stat of STAT_ORDER) {
-        let result = claim(loadout, this.level, gun, stat);
+        let result = claim(loadout, Infinity, gun, stat);
         while (result.ok) {
           loadout = result.loadout;
-          changed = true;
-          result = claim(loadout, this.level, gun, stat);
+          result = claim(loadout, Infinity, gun, stat);
         }
       }
     }
-    if (changed) this.commitLoadout(loadout);
+    this.grantAndCommit(loadout);
   }
 
   mountNextGun() {
     const at = GUN_ORDER.indexOf(this.loadout.gun);
     const gunId = GUN_ORDER[(at + 1) % GUN_ORDER.length];
     if (this.level < GUNS[gunId].unlockLevel) this.setLevel(GUNS[gunId].unlockLevel);
-    const result = equip(this.loadout, this.level, gunId);
-    if (result.ok) this.commitLoadout(result.loadout);
+    const bought = buyGun(this.loadout, this.level, Infinity, gunId);
+    const result = equip(bought.ok ? bought.loadout : this.loadout, gunId);
+    if (result.ok) this.grantAndCommit(result.loadout);
   }
 
   runDebug(id) {
@@ -269,6 +320,8 @@ export class SpaceShooterGame {
     else if (id === 'beam') this.setLevel(5);
     else if (id === 'pods') this.setLevel(10);
     else if (id === 'all') this.setLevel(16);
+    else if (id === 'coins100') this.addCoins(100);
+    else if (id === 'coins1000') this.addCoins(1000);
     else if (id === 'buy') this.buyOpenNodes();
     else if (id === 'mount') this.mountNextGun();
     else if (id === 'heal') {
@@ -284,6 +337,7 @@ export class SpaceShooterGame {
     this.canvas.dataset.score = String(this.score);
     this.canvas.dataset.level = String(this.level);
     this.canvas.dataset.xp = String(this.xp);
+    this.canvas.dataset.coins = String(this.coins);
     this.syncFocus();
   }
 
@@ -303,7 +357,7 @@ export class SpaceShooterGame {
     if (this.state === 'running' || this.state === 'map') return;
     this.choice = 'no';
     this.syncPrompt(false);
-    this.canvas.dataset.node = this.nodeId;
+    this.syncMap();
     this.setState('map');
     this.syncFocus();
     this.loop.start();
@@ -370,17 +424,22 @@ export class SpaceShooterGame {
     this.onScore(this.score);
   }
 
+  /** Spent moves with the loadout's price, so a refused save hands the coins back. */
+  swapLoadout(next) {
+    this.coinsSpent += loadoutPrice(next) - loadoutPrice(this.loadout);
+    this.loadout = next;
+    this.syncHud();
+  }
+
   /** Replaces the loadout without telling the server. Used when a save is refused. */
   setLoadout(loadout) {
-    this.loadout = cloneLoadout(loadout);
-    this.syncHud();
+    this.swapLoadout(cloneLoadout(loadout));
     if (this.state === 'upgrades' || this.state === 'weapon') this.render();
   }
 
   commitLoadout(next) {
     if (next === this.loadout) return;
-    this.loadout = next;
-    this.syncHud();
+    this.swapLoadout(next);
     this.onLoadout(next);
   }
 
@@ -474,6 +533,7 @@ export class SpaceShooterGame {
         phase: aimed ? 0 : Math.random() * 6,
         points: DART_POINTS,
         xp: DART_XP,
+        coins: DART_COINS,
       });
     }
     this.spawnTimer = randomBetween(2.5, 4.5);
@@ -581,17 +641,36 @@ export class SpaceShooterGame {
         this.nodeId = step(this.nodeId, direction, this.cleared);
         continue;
       }
+      if (key === 'q' || key === 'Q') {
+        this.shiftPlanet(-1);
+        continue;
+      }
+      if (key === 'e' || key === 'E') {
+        this.shiftPlanet(1);
+        continue;
+      }
       if (key === 'm' || key === 'M' || key === 'u' || key === 'U') {
         this.openUpgrades();
         break;
       }
       if (key === 'Enter' || key === ' ') {
-        this.canvas.dataset.node = this.nodeId;
         this.confirmLevel();
         break;
       }
     }
+    this.syncMap();
+  }
+
+  shiftPlanet(delta) {
+    const next = this.planetIndex + delta;
+    if (next < 0 || next >= PLANETS.length) return;
+    this.planetIndex = next;
+  }
+
+  syncMap() {
     this.canvas.dataset.node = this.nodeId;
+    this.canvas.dataset.planet = PLANETS[this.planetIndex].id;
+    this.canvas.dataset.levelName = LEVELS[this.nodeId]?.name ?? '';
   }
 
   updatePrompt() {
@@ -627,20 +706,21 @@ export class SpaceShooterGame {
     this.syncFocus();
   }
 
-  /** Mounts the focused gun and stays on the banners. A locked gun is left alone. */
+  /** Mounts the focused gun and stays on the banners. A gun not bought yet is left alone. */
   equipHero() {
     const gunId = GUN_ORDER[this.heroIndex];
-    const result = equip(this.loadout, this.level, gunId);
+    const result = equip(this.loadout, gunId);
     if (!result.ok) return;
     this.commitLoadout(result.loadout);
     this.syncFocus();
     this.render();
   }
 
+  /** Opens the focused gun's nodes. A gun whose level is reached is bought first when the coins cover it. */
   confirmHero() {
     const gunId = GUN_ORDER[this.heroIndex];
-    if (!isUnlocked(gunId, this.level)) return;
-    const result = equip(this.loadout, this.level, gunId);
+    const bought = buyGun(this.loadout, this.level, this.coins, gunId);
+    const result = equip(bought.ok ? bought.loadout : this.loadout, gunId);
     if (!result.ok) return;
     this.commitLoadout(result.loadout);
     this.pathGun = gunId;
@@ -684,7 +764,7 @@ export class SpaceShooterGame {
     const stat = STAT_ORDER[this.statIndex];
     const rank = this.loadout.ranks[this.pathGun][stat];
     if (this.nodeIndex !== rank) return;
-    const result = claim(this.loadout, this.level, this.pathGun, stat);
+    const result = claim(this.loadout, this.coins, this.pathGun, stat);
     if (!result.ok) return;
     this.commitLoadout(result.loadout);
     this.nodeIndex = this.nextNode(this.pathGun, stat);
@@ -769,6 +849,7 @@ export class SpaceShooterGame {
     if (index === -1) return;
     this.addScore(enemy.points);
     this.addXp(enemy.xp ?? 0);
+    this.addCoins(enemy.coins ?? 0);
     this.enemies.splice(index, 1);
   }
 
@@ -869,17 +950,26 @@ export class SpaceShooterGame {
   }
 
   drawLevel() {
-    const label = `LV ${this.level}`;
-    drawText(this.ctx, label, this.canvas.width - 4 - textWidth(label), 4);
+    drawText(this.ctx, `LV ${this.level}`, 4, 4);
   }
 
-  /** Gun banners in a row. A locked gun is ghosted, with a lock on its icon. */
+  /** Coin plus the balance in 3×5 digits. `right` is the row's right edge. */
+  paintBalance(right, top) {
+    const width = COIN[0].length + 1 + smallNumberWidth(this.coins);
+    const left = right - width;
+    drawSprite(this.ctx, COIN, left, top);
+    drawSmallNumber(this.ctx, this.coins, left + COIN[0].length + 1, top);
+    return left;
+  }
+
+  /** Gun banners in a row. A gun not bought yet is ghosted. Below its level it also has a lock. */
   renderHeroes() {
     this.clearMenu();
     const { ctx, canvas } = this;
     if (!canvas.width || !canvas.height) return;
     this.drawCentered('UPGRADES', 4);
     this.drawLevel();
+    this.paintBalance(canvas.width - 4, 4);
     const pad = 8;
     const gap = 6;
     const bannerW = Math.max(20, Math.floor((canvas.width - pad * 2 - gap * 2) / 3));
@@ -889,7 +979,7 @@ export class SpaceShooterGame {
       const left = pad + index * (bannerW + gap);
       const locked = !isUnlocked(gunId, this.level);
       const focused = index === this.heroIndex;
-      ctx.globalAlpha = locked ? GHOST_ALPHA * 2 : 1;
+      ctx.globalAlpha = isOwned(this.loadout, gunId) ? 1 : GHOST_ALPHA * 2;
       const icon = GUN_ICON[gunId];
       const iconX = left + Math.floor((bannerW - icon[0].length) / 2);
       drawSprite(ctx, icon, iconX, top + 3);
@@ -901,14 +991,16 @@ export class SpaceShooterGame {
       if (locked) drawSprite(ctx, LOCK, left + bannerW - LOCK[0].length - 2, top + 2);
     });
     const focused = GUN_ORDER[this.heroIndex];
-    const open = isUnlocked(focused, this.level);
+    const open = isOwned(this.loadout, focused);
     const hintY = top + bannerH + 6;
-    this.drawCentered(open ? 'UP DOWN EQUIPS' : `LEVEL ${GUNS[focused].unlockLevel} REQUIRED`, hintY);
+    if (open) this.drawCentered('UP DOWN EQUIPS', hintY);
+    else if (isUnlocked(focused, this.level)) this.drawCentered(`COSTS ${GUNS[focused].price}`, hintY);
+    else this.drawCentered(`LEVEL ${GUNS[focused].unlockLevel} REQUIRED`, hintY);
     if (open) this.drawCentered('SPACE OPENS', hintY + 8);
     this.drawWrapped(GUN_BLURB[focused], Math.max(hintY + (open ? 20 : 12), canvas.height - 28));
   }
 
-  /** One gun's rows. Filled nodes are bought. The next node opens at its level. */
+  /** One gun's rows. Filled nodes are bought. The next node is solid once the coins cover it. */
   renderWeapon() {
     this.clearMenu();
     const { ctx, canvas } = this;
@@ -920,6 +1012,7 @@ export class SpaceShooterGame {
     drawSprite(ctx, icon, left, 4);
     drawText(ctx, title, left + icon[0].length + 3, 4);
     this.drawLevel();
+    this.paintBalance(canvas.width - 4, 4);
     STAT_ORDER.forEach((stat, row) => {
       const y = 20 + row * 16;
       drawSprite(ctx, STAT_ICON[stat], 6, y);
@@ -929,7 +1022,7 @@ export class SpaceShooterGame {
       for (let i = 0; i < cap; i++) {
         const center = 58 + i * 14;
         const owned = i < rank;
-        const open = i === rank && this.level >= nodeLevel(this.pathGun, stat, i);
+        const open = i === rank && this.coins >= nodePrice(stat, i);
         if (owned) this.fillSquare(center, y + 2, 7);
         else {
           ctx.globalAlpha = open ? 1 : GHOST_ALPHA * 2;
@@ -941,7 +1034,7 @@ export class SpaceShooterGame {
     });
     const stat = STAT_ORDER[this.statIndex];
     const rank = this.loadout.ranks[this.pathGun][stat];
-    const detail = `${nodeBlurb(this.pathGun, stat, this.nodeIndex)} ${nodeStatus(this.pathGun, stat, this.nodeIndex, rank, this.level)}`;
+    const detail = `${nodeBlurb(this.pathGun, stat, this.nodeIndex)} ${nodeStatus(stat, this.nodeIndex, rank)}`;
     this.drawWrapped(detail, Math.max(70, canvas.height - 28));
   }
 
@@ -953,7 +1046,7 @@ export class SpaceShooterGame {
     ctx.fillRect(left + width - 1, top, 1, height);
   }
 
-  /** Path, nodes, and the cursor. No scenery. */
+  /** Path, nodes, the planet row, and the level description. No scenery. */
   renderMap() {
     const { ctx, canvas } = this;
     const { width, height } = canvas;
@@ -965,28 +1058,131 @@ export class SpaceShooterGame {
     ctx.fillStyle = INK;
 
     const at = (id) => this.mapPoint(NODES[id], width, height);
-    for (const [from, to] of EDGES) {
-      const a = at(from);
-      const b = at(to);
-      const x = Math.min(a.x, b.x);
-      const y = Math.min(a.y, b.y);
-      ctx.fillRect(x, y, Math.abs(a.x - b.x) || 1, Math.abs(a.y - b.y) || 1);
-    }
+    const bossAt = at('east');
+    for (const [from, to] of EDGES) this.drawMapEdge(at(from), at(to), bossAt);
 
     for (const node of Object.values(NODES)) {
-      const { x, y } = at(node.id);
-      if (node.levelId) this.strokeSquare(x, y, 7);
-      else this.fillSquare(x, y, 3);
+      if (node.id === 'east') continue;
+      const point = at(node.id);
+      if (node.levelId) this.strokeSquare(point.x, point.y, 7);
+      else this.fillSquare(point.x, point.y, 3);
     }
+    drawSprite(ctx, BOSS, bossAt.x - BOSS_R, bossAt.y - BOSS_R);
     const cursor = at(this.nodeId);
-    this.fillSquare(cursor.x, cursor.y, 5);
+    if (this.nodeId === 'east') this.strokeSquare(cursor.x, cursor.y, 12);
+    else this.fillSquare(cursor.x, cursor.y, 5);
+
+    this.drawLevel();
+    this.paintBalance(width - 4, 4);
+    this.renderPlanetTitle();
+    this.renderMapKeys();
+    this.renderDetail();
+  }
+
+  mapBox(width, height) {
+    return {
+      x: Math.round(26 * width / 185),
+      y: Math.round(20 * height / 104),
+      w: Math.round(134 * width / 185),
+      h: Math.round(65 * height / 104),
+    };
   }
 
   mapPoint(node, width, height) {
-    const pad = 14;
-    const x = pad + node.x * ((width - pad * 2) / 3);
-    const y = pad + (node.y - 1) * ((height - pad * 2) / 2);
-    return { x: Math.round(x), y: Math.round(y) };
+    const box = this.mapBox(width, height);
+    return {
+      x: Math.round(box.x + (node.x * box.w) / 3),
+      y: Math.round(box.y + ((node.y - 1) * box.h) / 2),
+    };
+  }
+
+  // The path stops on the boss's edge so the line does not cut the eyes.
+  drawMapEdge(a, b, boss) {
+    let x0 = a.x;
+    let y0 = a.y;
+    let x1 = b.x;
+    let y1 = b.y;
+    const trim = (which) => {
+      const point = which === 0 ? a : b;
+      const other = which === 0 ? b : a;
+      if (point.x !== boss.x || point.y !== boss.y) return;
+      const toward = (from, to) => from + Math.sign(to - from) * BOSS_R;
+      if (other.x !== point.x) {
+        const next = toward(point.x, other.x);
+        if (which === 0) x0 = next;
+        else x1 = next;
+      } else if (other.y !== point.y) {
+        const next = toward(point.y, other.y);
+        if (which === 0) y0 = next;
+        else y1 = next;
+      }
+    };
+    trim(0);
+    trim(1);
+    const x = Math.min(x0, x1);
+    const y = Math.min(y0, y1);
+    const w = Math.abs(x1 - x0);
+    const h = Math.abs(y1 - y0);
+    if (w === 0 && h === 0) return;
+    this.ctx.fillRect(x, y, w || 1, h || 1);
+  }
+
+  renderPlanetTitle() {
+    const { ctx, canvas } = this;
+    const label = `PLANET: ${PLANETS[this.planetIndex].name}`;
+    const left = Math.round((canvas.width - textWidth(label)) / 2);
+    const y = 4;
+    ctx.globalAlpha = this.planetIndex > 0 ? 1 : GHOST_ALPHA * 2;
+    drawSprite(ctx, CHEV_L, left - 3 - CHEV_L[0].length, y);
+    ctx.globalAlpha = this.planetIndex < PLANETS.length - 1 ? 1 : GHOST_ALPHA * 2;
+    drawSprite(ctx, CHEV_R, left + textWidth(label) + 3, y);
+    ctx.globalAlpha = 1;
+    drawText(ctx, label, left, y);
+  }
+
+  /** Arrows move, the key starts the level. Bottom-left, 3px off the corner. */
+  renderMapKeys() {
+    const { ctx, canvas } = this;
+    const top = canvas.height - 3 - PAD.length;
+    drawSprite(ctx, PAD, 4, top);
+    const key = 4 + PAD[0].length + 2;
+    ctx.fillRect(key, top, 9, 1);
+    ctx.fillRect(key, top + 8, 9, 1);
+    ctx.fillRect(key, top, 1, 9);
+    ctx.fillRect(key + 8, top, 1, 9);
+    drawSprite(ctx, GO, key + 2, top + 4);
+  }
+
+  /** Skull, waves, and the level name. Always on screen, bottom-right. */
+  renderDetail() {
+    const { canvas } = this;
+    const info = LEVELS[this.nodeId];
+    if (!info) return;
+    const right = canvas.width - 4;
+    const nameTop = canvas.height - 4 - FONT_H;
+    drawText(this.ctx, info.name, right - textWidth(info.name), nameTop);
+    const gap = 2;
+    const waveTop = nameTop - gap - WAVE_ICON.length;
+    const skullTop = waveTop - gap - SKULL.length;
+    this.drawStatRow(SKULL, info.difficulty, right, skullTop);
+    this.drawStatRow(WAVE_ICON, info.waves, right, waveTop);
+  }
+
+  drawStatRow(icon, filled, right, top) {
+    const pipsW = PIP_COUNT * PIP_SIZE + (PIP_COUNT - 1);
+    const left = right - (icon[0].length + 2 + pipsW);
+    drawSprite(this.ctx, icon, left, top);
+    this.drawPips(filled, left + icon[0].length + 2 + pipsW, top + 1);
+  }
+
+  drawPips(filled, right, top) {
+    let x = right - (PIP_COUNT * PIP_SIZE + (PIP_COUNT - 1));
+    for (let i = 0; i < PIP_COUNT; i++) {
+      this.ctx.globalAlpha = i < filled ? 1 : GHOST_ALPHA * 2;
+      this.ctx.fillRect(x, top, PIP_SIZE, PIP_SIZE);
+      x += PIP_SIZE + 1;
+    }
+    this.ctx.globalAlpha = 1;
   }
 
   fillSquare(x, y, size) {
@@ -1029,6 +1225,14 @@ export class SpaceShooterGame {
     }
     ctx.globalAlpha = 1;
     drawNumber(ctx, this.score, 5, canvas.width - 2, 1);
+    // 2px under the score. The row hangs into the playfield; a ship at the top can cover it.
+    const balanceTop = 12;
+    const balanceRight = canvas.width - 2;
+    const balanceLeft = balanceRight - (COIN[0].length + 1 + smallNumberWidth(this.coins));
+    const clearLeft = Math.min(balanceLeft, this.coinClearLeft ?? balanceLeft);
+    ctx.clearRect(clearLeft, balanceTop, balanceRight - clearLeft, COIN.length);
+    this.coinClearLeft = balanceLeft;
+    this.paintBalance(balanceRight, balanceTop);
 
     // Same clear as the top bar: the LCD smear must not eat the level digits.
     const bandTop = canvas.height - HUD_HEIGHT;
@@ -1049,7 +1253,6 @@ export class SpaceShooterGame {
     if (canvas.width < outerW + 4) return null;
 
     const left = Math.round((canvas.width - outerW) / 2);
-    // Halfway between the playfield floor and the bottom of the screen.
     const mid = (this.groundY() + canvas.height) / 2;
     const top = Math.round(mid - outerH / 2);
     const innerLeft = left + BAR_BORDER;
@@ -1058,13 +1261,10 @@ export class SpaceShooterGame {
     const numberW = smallNumberWidth(this.level);
     const numberH = 5;
     const numberLeft = Math.round(left + outerW / 2 - numberW / 2);
-    // Three rows above the frame. The notch still wraps the digit; the bottom
-    // row of the track stays intact.
     const numberTop = top - 3;
     const notchLeft = numberLeft - BAR_NOTCH_X;
     const notchTop = numberTop - 1;
     const notchW = numberW + BAR_NOTCH_X * 2;
-    // Stop above the last track row so the fill stays connected underneath.
     const notchH = innerTop + BAR_TRACK_H - 1 - notchTop;
 
     ctx.globalAlpha = GHOST_ALPHA;
@@ -1084,32 +1284,25 @@ export class SpaceShooterGame {
   }
 
   /**
-   * Map and upgrade buttons in the bottom band, one on each side of the bar.
-   * The letter is a label only. A cluster that would touch the bar is skipped.
+   * Map and upgrade buttons together on the lower left. The letter is a label
+   * only. The pair is skipped when it would touch the bar.
    */
   renderCornerIcons(bar) {
-    const { ctx, canvas } = this;
-    const iconTop = canvas.height - 1 - MAP.length;
+    const { ctx } = this;
+    const iconTop = this.canvas.height - 1 - MAP.length;
     const keyTop = iconTop + Math.floor((MAP.length - KEYCAP_H) / 2);
 
     const mapLeft = 2;
     const keyMLeft = mapLeft + MAP[0].length + 1;
-    const left = { left: mapLeft, right: keyMLeft + KEYCAP_W };
+    const upgradeLeft = keyMLeft + KEYCAP_W + 2;
+    const keyULeft = upgradeLeft + UPGRADE[0].length + 1;
+    const cluster = { left: mapLeft, right: keyULeft + KEYCAP_W };
+    if (bar && cluster.left <= bar.right && cluster.right >= bar.left) return;
 
-    const keyURight = canvas.width - 2;
-    const keyULeft = keyURight - KEYCAP_W;
-    const upgradeLeft = keyULeft - 1 - UPGRADE[0].length;
-    const right = { left: upgradeLeft, right: keyURight };
-
-    const meets = (cluster, span) => span && cluster.left <= span.right && cluster.right >= span.left;
-    if (!meets(left, bar) && !meets(left, right)) {
-      drawSprite(ctx, MAP, mapLeft, iconTop);
-      drawKeycap(ctx, 'M', keyMLeft, keyTop);
-    }
-    if (!meets(right, bar) && !meets(right, left)) {
-      drawSprite(ctx, UPGRADE, upgradeLeft, iconTop);
-      drawKeycap(ctx, 'U', keyULeft, keyTop);
-    }
+    drawSprite(ctx, MAP, mapLeft, iconTop);
+    drawKeycap(ctx, 'M', keyMLeft, keyTop);
+    drawSprite(ctx, UPGRADE, upgradeLeft, iconTop);
+    drawKeycap(ctx, 'U', keyULeft, keyTop);
   }
 
   /** 1px frame. The top edge stops around the level; the other three sides stay closed. */

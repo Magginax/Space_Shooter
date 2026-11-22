@@ -1,64 +1,103 @@
 import { test, expect } from '@playwright/test';
 import {
   GUNS,
+  buyGun,
   claim,
   cloneLoadout,
   cooldownFor,
   defaultLoadout,
   equip,
   loadoutError,
+  loadoutPrice,
   nodeBlurb,
-  nodeLevel,
+  nodePrice,
   nodeStatus,
   spawnShots,
 } from '../../src/games/space-shooter/weapons.js';
 
 test.describe('gun nodes', () => {
-  test('level 0 can mount the blaster and nothing else', () => {
+  test('a new player owns the blaster and nothing else', () => {
     const loadout = defaultLoadout();
-    expect(claim(loadout, 0, 'blaster', 'rate')).toMatchObject({ ok: false, reason: 'locked' });
-    expect(claim(loadout, 1, 'blaster', 'rate')).toMatchObject({ ok: false, reason: 'locked' });
-    expect(equip(loadout, 4, 'beam')).toMatchObject({ ok: false, reason: 'locked' });
-    expect(equip(loadout, 9, 'pods')).toMatchObject({ ok: false, reason: 'locked' });
-    expect(loadout.ranks.blaster.rate).toBe(0);
+    expect(loadout.owned).toEqual(['blaster']);
+    expect(equip(loadout, 'beam')).toMatchObject({ ok: false, reason: 'locked' });
+    expect(equip(loadout, 'pods')).toMatchObject({ ok: false, reason: 'locked' });
+    expect(claim(loadout, 999, 'beam', 'rate')).toMatchObject({ ok: false, reason: 'locked' });
+    expect(loadoutPrice(loadout)).toBe(0);
   });
 
-  test('a node opens at its own level, and the one after it stays shut', () => {
-    expect(nodeLevel('blaster', 'rate', 0)).toBe(2);
-    expect(nodeLevel('blaster', 'rate', 1)).toBe(4);
-    expect(nodeLevel('blaster', 'shot', 0)).toBe(3);
-    expect(nodeLevel('beam', 'rate', 0)).toBe(7);
-    expect(GUNS.beam.unlockLevel).toBe(5);
-    expect(GUNS.pods.unlockLevel).toBe(10);
+  test('a node costs coins at any level, and the one after it needs the one on its left', () => {
+    expect(nodePrice('rate', 0)).toBe(8);
+    expect(nodePrice('rate', 1)).toBe(16);
+    expect(nodePrice('shot', 0)).toBe(12);
+    expect(nodePrice('pierce', 0)).toBe(24);
 
-    const first = claim(defaultLoadout(), 2, 'blaster', 'rate');
+    expect(claim(defaultLoadout(), 7, 'blaster', 'rate')).toMatchObject({ ok: false, reason: 'poor' });
+    const first = claim(defaultLoadout(), 8, 'blaster', 'rate');
     expect(first.ok).toBe(true);
     expect(first.loadout.ranks.blaster.rate).toBe(1);
-    expect(claim(first.loadout, 2, 'blaster', 'rate')).toMatchObject({ ok: false, reason: 'locked' });
-    expect(claim(first.loadout, 4, 'blaster', 'rate').loadout.ranks.blaster.rate).toBe(2);
-    expect(claim(first.loadout, 4, 'blaster', 'rate').ok).toBe(true);
-    const full = claim(claim(defaultLoadout(), 4, 'blaster', 'rate').loadout, 4, 'blaster', 'rate').loadout;
-    expect(claim(full, 4, 'blaster', 'rate')).toMatchObject({ ok: false, reason: 'capped' });
+    expect(loadoutPrice(first.loadout)).toBe(8);
+
+    // The second node costs its own price, after the first is owned.
+    expect(claim(first.loadout, 15, 'blaster', 'rate')).toMatchObject({ ok: false, reason: 'poor' });
+    const full = claim(first.loadout, 16, 'blaster', 'rate').loadout;
+    expect(full.ranks.blaster.rate).toBe(2);
+    expect(loadoutPrice(full)).toBe(24);
+    expect(claim(full, 999, 'blaster', 'rate')).toMatchObject({ ok: false, reason: 'capped' });
   });
 
-  test('mounting the beam at level 5 does not buy its nodes', () => {
-    const mounted = equip(defaultLoadout(), 5, 'beam');
-    expect(mounted.loadout.gun).toBe('beam');
-    expect(mounted.loadout.ranks.beam).toEqual({ rate: 0, shot: 0, pierce: 0 });
-    expect(claim(mounted.loadout, 5, 'beam', 'rate')).toMatchObject({ ok: false, reason: 'locked' });
-    expect(claim(mounted.loadout, 7, 'beam', 'rate').ok).toBe(true);
+  test('the beam is bought at level 5 for 50 coins, then mounted and upgraded', () => {
+    expect(GUNS.beam).toMatchObject({ unlockLevel: 5, price: 50 });
+    expect(GUNS.pods).toMatchObject({ unlockLevel: 10, price: 120 });
+    expect(buyGun(defaultLoadout(), 4, 999, 'beam')).toMatchObject({ ok: false, reason: 'locked' });
+    expect(buyGun(defaultLoadout(), 5, 49, 'beam')).toMatchObject({ ok: false, reason: 'poor' });
+    expect(buyGun(defaultLoadout(), 9, 999, 'pods')).toMatchObject({ ok: false, reason: 'locked' });
+
+    const bought = buyGun(defaultLoadout(), 5, 50, 'beam');
+    expect(bought.ok).toBe(true);
+    expect(bought.loadout).toMatchObject({ gun: 'blaster', owned: ['blaster', 'beam'] });
+    expect(bought.loadout.ranks.beam).toEqual({ rate: 0, shot: 0, pierce: 0 });
+    expect(loadoutPrice(bought.loadout)).toBe(50);
+    expect(buyGun(bought.loadout, 5, 999, 'beam')).toMatchObject({ ok: false, reason: 'owned' });
+
+    expect(equip(bought.loadout, 'beam').loadout.gun).toBe('beam');
+    expect(claim(bought.loadout, 8, 'beam', 'rate').ok).toBe(true);
   });
 
-  test('a rank cannot go back down, and a node cannot be stored early', () => {
-    const raised = claim(defaultLoadout(), 2, 'blaster', 'rate').loadout;
+  test('a saved loadout must be paid for, and nothing bought can be taken back', () => {
+    const raised = claim(defaultLoadout(), 8, 'blaster', 'rate').loadout;
+    expect(loadoutError(defaultLoadout(), raised, 0, 7)).toBe('Not enough coins');
+    expect(loadoutError(defaultLoadout(), raised, 0, 8)).toBeNull();
+    // What is already owned is not charged again.
+    expect(loadoutError(raised, raised, 0, 0)).toBeNull();
+
     const dropped = cloneLoadout(raised);
     dropped.ranks.blaster.rate = 0;
-    expect(loadoutError(raised, dropped, 2)).toBe('A rank cannot go down');
+    expect(loadoutError(raised, dropped, 0, 99)).toBe('A rank cannot go down');
 
-    const early = cloneLoadout(defaultLoadout());
-    early.ranks.blaster.shot = 1;
-    expect(loadoutError(defaultLoadout(), early, 2)).toBe('That loadout is not allowed');
-    expect(loadoutError(defaultLoadout(), early, 3)).toBeNull();
+    const beam = buyGun(defaultLoadout(), 5, 50, 'beam').loadout;
+    expect(loadoutError(defaultLoadout(), beam, 4, 999)).toBe('That gun is locked');
+    expect(loadoutError(defaultLoadout(), beam, 5, 49)).toBe('Not enough coins');
+    expect(loadoutError(defaultLoadout(), beam, 5, 50)).toBeNull();
+    expect(loadoutError(beam, defaultLoadout(), 5, 999)).toBe('A gun cannot be sold');
+
+    // Mounting or upgrading a gun that was never bought.
+    const mounted = { ...defaultLoadout(), gun: 'beam' };
+    expect(loadoutError(defaultLoadout(), mounted, 5, 999)).toBe('That gun is locked');
+    const ranked = defaultLoadout();
+    ranked.ranks.beam.shot = 1;
+    expect(loadoutError(defaultLoadout(), ranked, 5, 999)).toBe('That loadout is not allowed');
+  });
+
+  test('a loadout saved before guns were bought keeps the gun it mounted or upgraded', () => {
+    const ranks = defaultLoadout().ranks;
+    expect(cloneLoadout({ gun: 'beam', ranks }).owned).toEqual(['blaster', 'beam']);
+    expect(cloneLoadout({ gun: 'blaster', ranks: { ...ranks, pods: { rate: 1, shot: 0, pierce: 0 } } }).owned).toEqual([
+      'blaster',
+      'pods',
+    ]);
+    expect(cloneLoadout({ gun: 'blaster', ranks }).owned).toEqual(['blaster']);
+    // With a list, a gun outside it is not mounted.
+    expect(cloneLoadout({ gun: 'beam', owned: ['blaster'], ranks })).toMatchObject({ gun: 'blaster', owned: ['blaster'] });
   });
 
   test('rank 0 blaster is one pellet on a 0.45s cycle', () => {
@@ -78,12 +117,13 @@ test.describe('gun nodes', () => {
     expect(shots[1]).toMatchObject({ y: 12, pierce: 0 });
   });
 
-  test('a node says what it changes and which level it needs', () => {
+  test('a node says what it changes and what it costs', () => {
     expect(nodeBlurb('blaster', 'rate', 0)).toBe('COOLDOWN 0.45S TO 0.32S.');
     expect(nodeBlurb('blaster', 'shot', 0)).toBe('ADDS A SECOND PELLET ABOVE.');
-    expect(nodeStatus('blaster', 'rate', 0, 0, 0)).toBe('NEEDS LEVEL 2');
-    expect(nodeStatus('blaster', 'rate', 0, 1, 2)).toBe('OWNED');
-    expect(nodeStatus('beam', 'rate', 0, 0, 5)).toBe('NEEDS LEVEL 7');
+    expect(nodeStatus('rate', 0, 0)).toBe('COSTS 8');
+    expect(nodeStatus('rate', 0, 1)).toBe('OWNED');
+    expect(nodeStatus('rate', 1, 0)).toBe('BUY THE NODE ON THE LEFT');
+    expect(nodeStatus('pierce', 0, 0)).toBe('COSTS 24');
   });
 
   test('pod pierce is carried on the pod itself', () => {

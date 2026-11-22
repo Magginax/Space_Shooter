@@ -183,7 +183,7 @@ export class LoginPage {
   }
 
   async expectReturnAddressToGame() {
-    await expect(this.page).toHaveURL(/\/views\/login\.html\?next=%2F%23game$/);
+    await expect(this.page).toHaveURL(/\/views\/login\.html\?next=%2Fviews%2Fgame\.html$/);
   }
 
   async expectStillHere() {

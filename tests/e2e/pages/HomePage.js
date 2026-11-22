@@ -1,21 +1,11 @@
 import { expect } from '@playwright/test';
 
-/** Page object for index.html: the site header and the game section (login gate). */
+/** Page object for index.html: the site header and the about section. */
 export class HomePage {
   constructor(page) {
     this.page = page;
     this.heading = page.getByRole('heading', { level: 1 });
-    this.aboutHeading = page.getByRole('heading', { name: 'About' });
-    this.gameSection = page.getByTestId('game-section');
-    this.lock = page.getByTestId('game-lock');
-    this.loginToPlayLink = page.getByTestId('login-to-play');
-    this.gameArea = page.getByTestId('game-area');
-    this.playerName = page.getByTestId('player-name');
-    this.guestNote = page.getByTestId('guest-note');
-    this.canvas = page.getByTestId('game-canvas');
-    this.startButton = page.getByTestId('start-game');
-    this.abandonPrompt = page.getByTestId('abandon-prompt');
-    this.backButton = page.getByTestId('upgrade-back');
+    this.gameLink = page.getByRole('link', { name: 'Game' });
   }
 
   // --- Actions ------------------------------------------------------------------
@@ -24,18 +14,9 @@ export class HomePage {
     await this.page.goto('/');
   }
 
-  /** A direct link to the game, as someone would paste it. */
-  async openGameLink() {
-    await this.page.goto('/#game');
-  }
-
   /** Clicks a link in the header navigation ("About", "Game", "Leaderboard", "Login"). */
   async clickNav(name) {
     await this.page.getByRole('link', { name }).click();
-  }
-
-  async clickLogInToPlay() {
-    await this.loginToPlayLink.click();
   }
 
   // --- Checks -------------------------------------------------------------------
@@ -45,127 +26,7 @@ export class HomePage {
     await expect(this.heading).toHaveText('Space_Shooter');
   }
 
-  async expectScrolledToGame() {
-    await expect(this.page).toHaveURL(/#game$/);
-    await expect(this.gameSection).toBeInViewport();
-  }
-
-  /** The game is replaced by the "Log in to play" panel; About stays public. */
-  async expectGameLocked() {
-    await expect(this.gameSection).toHaveAttribute('data-access', 'locked');
-    await expect(this.lock).toBeVisible();
-    await expect(this.gameArea).toBeHidden();
-    await expect(this.aboutHeading).toBeVisible();
-  }
-
-  async expectOnGame() {
-    await expect(this.page).toHaveURL(/\/#game$/);
-    await expect(this.gameSection).toHaveAttribute('data-access', 'granted');
-  }
-
-  async expectPlayingAs(username, { guest = false } = {}) {
-    await expect(this.gameSection).toHaveAttribute('data-access', 'granted');
-    await expect(this.playerName).toHaveText(username);
-    if (guest) await expect(this.guestNote).toHaveText('(guest: scores are not saved)');
-    else await expect(this.guestNote).toBeHidden();
-  }
-
-  async expectIdleGame() {
-    await expect(this.canvas).toHaveAttribute('data-state', 'idle');
-    await expect(this.canvas).toHaveAttribute('data-lives', '3');
-    await expect(this.canvas).toHaveAttribute('data-score', '0');
-    await expect(this.canvas).toHaveAttribute('data-level', '0');
-    await expect(this.canvas).toHaveAttribute('data-xp', '0');
-    await expect(this.canvas).toHaveAttribute('data-gun', 'blaster');
-    await expect(this.canvas).toHaveAttribute('data-locked', '');
-    await expect(this.startButton).toBeVisible();
-    await expect(this.backButton).toBeHidden();
-  }
-
-  async startGame() {
-    await this.startButton.click();
-  }
-
-  async expectMap(node = 'start') {
-    await expect(this.canvas).toHaveAttribute('data-state', 'map');
-    await expect(this.canvas).toHaveAttribute('data-node', node);
-    await expect(this.startButton).toBeHidden();
-    await expect(this.abandonPrompt).toBeHidden();
-  }
-
-  /** Walk start -> bend -> level, then confirm. */
-  async enterLevel() {
-    await this.page.keyboard.press('ArrowRight');
-    await this.page.keyboard.press('ArrowRight');
-    await this.page.keyboard.press('Enter');
-  }
-
-  /** U during a run: the same prompt, and Yes opens the gun banners. */
-  async abandonToUpgrades() {
-    await this.page.keyboard.press('u');
-    await expect(this.canvas).toHaveAttribute('data-state', 'paused');
-    await expect(this.abandonPrompt).toBeVisible();
-    await expect(this.abandonPrompt).toHaveAttribute('data-choice', 'no');
-    await this.page.keyboard.press('ArrowRight');
-    await this.page.keyboard.press('Enter');
-  }
-
-  async abandonRun() {
-    await this.page.keyboard.press('m');
-    await expect(this.canvas).toHaveAttribute('data-state', 'paused');
-    await expect(this.abandonPrompt).toBeVisible();
-    await expect(this.abandonPrompt).toHaveAttribute('data-choice', 'no');
-    await this.page.keyboard.press('ArrowRight');
-    await expect(this.abandonPrompt).toHaveAttribute('data-choice', 'yes');
-    await this.page.keyboard.press('Enter');
-  }
-
-  async expectGameRunning() {
-    await expect(this.canvas).toHaveAttribute('data-state', 'running');
-    await expect(this.startButton).toBeHidden();
-  }
-
-  async openUpgrades() {
-    await this.page.keyboard.press('u');
-  }
-
-  async closeUpgrades() {
-    await this.page.keyboard.press('Escape');
-  }
-
-  async clickBack() {
-    await this.backButton.click();
-  }
-
-  async expectUpgrades() {
-    await expect(this.canvas).toHaveAttribute('data-state', 'upgrades');
-    await expect(this.canvas).toHaveAttribute('data-gun', 'blaster');
-    await expect(this.canvas).toHaveAttribute('data-locked', '');
-    await expect(this.canvas).toHaveAttribute('data-level', '0');
-    await expect(this.startButton).toBeHidden();
-    await expect(this.abandonPrompt).toBeHidden();
-    await expect(this.backButton).toBeVisible();
-  }
-
-  async focusBeam() {
-    await this.page.keyboard.press('ArrowRight');
-    await expect(this.canvas).toHaveAttribute('data-gun', 'beam');
-    await expect(this.canvas).toHaveAttribute('data-locked', '5');
-  }
-
-  async holdFire() {
-    await this.page.keyboard.down('Space');
-  }
-
-  async releaseFire() {
-    await this.page.keyboard.up('Space');
-  }
-
-  async expectScoreAbove(min) {
-    await expect.poll(async () => Number(await this.canvas.getAttribute('data-score'))).toBeGreaterThan(min);
-  }
-
-  async expectXpAbove(min) {
-    await expect.poll(async () => Number(await this.canvas.getAttribute('data-xp'))).toBeGreaterThan(min);
+  async expectGameLink() {
+    await expect(this.gameLink).toHaveAttribute('href', './views/game.html');
   }
 }

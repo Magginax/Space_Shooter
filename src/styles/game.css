@@ -51,6 +51,19 @@ body.handheld {
   outline-offset: 4px;
 }
 
+.player-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: baseline;
+  margin: 0 8px 16px;
+  color: var(--lcd);
+  font-size: 0.55rem;
+}
+.player-bar a { margin-left: auto; color: inherit; text-decoration: none; }
+.player-bar a:hover,
+.player-bar a:focus-visible { color: #fff; }
+
 /* ---------- The device ---------- */
 
 .device {
@@ -132,7 +145,7 @@ body.handheld {
   color: var(--ink);
 }
 
-/* Sized by LcdScene.js to a whole number of LCD pixels, centred in the screen. */
+/* Sized by the game to a whole number of LCD pixels, centred in the screen. */
 .lcd {
   position: absolute;
   inset: 0;
@@ -146,7 +159,7 @@ body.handheld {
 }
 
 /* Thin light lines between the LCD pixels. --px (one LCD pixel in CSS pixels)
-   is set by LcdScene.js, so the grid matches the canvas pixels exactly. */
+   is set by the game, so the grid matches the canvas pixels exactly. */
 .lcd::after,
 .panel::after {
   content: '';
@@ -167,6 +180,66 @@ body.handheld {
   z-index: 3;
   background: linear-gradient(115deg, rgb(255 255 255 / 0.2) 0%, rgb(255 255 255 / 0.04) 30%, transparent 45%);
   box-shadow: inset 0 0 22px rgb(0 0 0 / 0.35);
+}
+
+.screen .start-game,
+.screen .upgrade-back {
+  position: relative;
+  z-index: 2;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  background: var(--ink);
+  color: var(--lcd);
+  font: inherit;
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.screen .upgrade-back {
+  position: absolute;
+  left: 0.6rem;
+  bottom: 0.6rem;
+}
+
+.abandon {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--ink);
+  background: var(--ink);
+  color: var(--lcd);
+  font-size: 0.55rem;
+  text-align: center;
+}
+
+.abandon p { margin: 0; }
+
+.abandon-choices {
+  display: flex;
+  gap: 1rem;
+}
+
+.abandon[data-choice='no'] [data-testid='abandon-no'],
+.abandon[data-choice='yes'] [data-testid='abandon-yes'] {
+  outline: 2px solid var(--lcd);
+  outline-offset: 2px;
+}
+
+.screen:has(canvas[data-state='map']) .start-game,
+.screen:has(canvas[data-state='running']) .start-game,
+.screen:has(canvas[data-state='paused']) .start-game,
+.screen:has(canvas[data-state='upgrades']) .start-game,
+.screen:has(canvas[data-state='weapon']) .start-game,
+.screen:has(canvas[data-state='debug']) .start-game {
+  display: none;
 }
 
 .screen.shake { animation: shake 0.4s steps(5); }

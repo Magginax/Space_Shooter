@@ -52,3 +52,22 @@ export function step(nodeId, direction, cleared) {
 export function levelIdAt(nodeId) {
   return NODES[nodeId]?.levelId ?? null;
 }
+
+export const PLANETS = [
+  { id: 'io', name: 'IO' },
+  { id: 'vega', name: 'VEGA' },
+  { id: 'ceres', name: 'CERES' },
+];
+
+export const START_PLANET = 1;
+
+export const LEVELS = {
+  start: { name: 'ALPHA', difficulty: 1, waves: 1 },
+  bend: { name: 'FORK', difficulty: 2, waves: 3 },
+  north: { name: 'RIDGE', difficulty: 2, waves: 2 },
+  west: { name: 'SHORE', difficulty: 1, waves: 2 },
+  south: { name: 'DRIFT', difficulty: 2, waves: 3 },
+  level: { name: 'ENDLESS', difficulty: 3, waves: 4 },
+  below: { name: 'TRENCH', difficulty: 4, waves: 3 },
+  east: { name: 'WARDEN', difficulty: 5, waves: 5 },
+};

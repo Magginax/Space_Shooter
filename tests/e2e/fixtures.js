@@ -1,6 +1,7 @@
 import { test as base } from '@playwright/test';
 import { FakeSupabase } from './support/FakeSupabase.js';
 import { ErrorPage } from './pages/ErrorPage.js';
+import { GamePage } from './pages/GamePage.js';
 import { HomePage } from './pages/HomePage.js';
 import { LeaderboardPage } from './pages/LeaderboardPage.js';
 import { LoginPage } from './pages/LoginPage.js';
@@ -11,7 +12,7 @@ export { PASSWORD } from './support/FakeSupabase.js';
  * Every e2e spec imports `test` from here instead of from @playwright/test.
  * A test then simply asks for what it needs:
  *
- *   test('...', async ({ supabase, homePage, loginPage }) => { ... });
+ *   test('...', async ({ supabase, homePage, loginPage, gamePage }) => { ... });
  *
  * Specs only call methods of these objects; selectors and checks live in
  * pages/*.js and support/FakeSupabase.js.
@@ -29,6 +30,9 @@ export const test = base.extend({
   ],
   errorPage: async ({ page }, use) => {
     await use(new ErrorPage(page));
+  },
+  gamePage: async ({ page }, use) => {
+    await use(new GamePage(page));
   },
   homePage: async ({ page }, use) => {
     await use(new HomePage(page));

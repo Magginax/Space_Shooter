@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { SpaceShooterGame } from '../../src/games/space-shooter/SpaceShooterGame.js';
-import { cloneLoadout } from '../../src/games/space-shooter/weapons.js';
+import { cloneLoadout, defaultLoadout } from '../../src/games/space-shooter/weapons.js';
 import { DART } from '../../src/effects/lcdArt.js';
 
 const STEP = 1 / 60;
@@ -69,7 +69,7 @@ function releaseAll(...keys) {
 
 /** A dart that stays put unless a test gives it a speed. */
 function dart(x, y, extra = {}) {
-  return { kind: DART, x, baseY: y, y, speed: 0, amp: 0, phase: 0, points: 50, xp: 50, ...extra };
+  return { kind: DART, x, baseY: y, y, speed: 0, amp: 0, phase: 0, points: 50, xp: 50, coins: 1, ...extra };
 }
 
 function step(game, frames = 1) {
@@ -111,10 +111,18 @@ test.describe('Space shooter rules', () => {
     return box;
   }
 
+  /** One dart on the bullet row, and the bullet that kills it this frame. */
+  function killOne() {
+    const ship = game.shipBox();
+    const box = placeOnBulletLine(ship.x + ship.w + 6);
+    game.bullets.push({ x: box.x + box.w + 7, y: box.y + 3 });
+    step(game);
+  }
+
   test.describe('states', () => {
     test('a new game is idle with three hearts and no score', () => {
       expect(game.state).toBe('idle');
-      expect(game.canvas.dataset).toMatchObject({ state: 'idle', lives: '3', score: '0', level: '0', xp: '0' });
+      expect(game.canvas.dataset).toMatchObject({ state: 'idle', lives: '3', score: '0', level: '0', xp: '0', coins: '0' });
       expect(game.lives).toBe(3);
       expect(game.score).toBe(0);
       expect(game.level).toBe(0);
@@ -133,7 +141,7 @@ test.describe('Space shooter rules', () => {
       expect(game.lives).toBe(3);
       expect(game.score).toBe(0);
       expect(game.enemies).toHaveLength(3);
-      expect(game.enemies.every((enemy) => enemy.points === 50 && enemy.xp === 50)).toBe(true);
+      expect(game.enemies.every((enemy) => enemy.points === 50 && enemy.xp === 50 && enemy.coins === 1)).toBe(true);
 
       const box = game.shipBox();
       const centre = game.enemies.find((enemy) => enemy.baseY === box.y);
@@ -376,13 +384,6 @@ test.describe('Space shooter rules', () => {
   });
 
   test.describe('experience', () => {
-    function killOne() {
-      const ship = game.shipBox();
-      const box = placeOnBulletLine(ship.x + ship.w + 6);
-      game.bullets.push({ x: box.x + box.w + 7, y: box.y + 3 });
-      step(game);
-    }
-
     test('four dart kills reach level 1, and the fifth keeps 50 toward the next', () => {
       const reported = [];
       game.onProgress = (xp) => reported.push(xp);
@@ -425,6 +426,43 @@ test.describe('Space shooter rules', () => {
       expect(game.xp).toBe(250);
       expect(game.intoLevel).toBe(50);
       expect(game.canvas.dataset).toMatchObject({ state: 'idle', level: '1', xp: '250' });
+    });
+  });
+
+  test.describe('coins', () => {
+    test('a dart kill adds one coin and reports the earned total', () => {
+      const reported = [];
+      game.onCoins = (earned) => reported.push(earned);
+      beginRound();
+
+      killOne();
+      killOne();
+
+      expect(game.coins).toBe(2);
+      expect(game.canvas.dataset.coins).toBe('2');
+      expect(reported).toEqual([1, 2]);
+    });
+
+    test('ramming a dart earns nothing, and a new round keeps the wallet', () => {
+      beginRound();
+      killOne();
+      game.lives = 1;
+      game.enemies = [dart(game.shipBox().x, game.shipBox().y)];
+      step(game);
+      expect(game.state).toBe('over');
+      expect(game.coins).toBe(1);
+
+      game.start();
+
+      expect(game.coins).toBe(1);
+      expect(game.canvas.dataset).toMatchObject({ score: '0', coins: '1' });
+    });
+
+    test('the wallet starts from the saved totals', () => {
+      game.destroy();
+      game = new SpaceShooterGame(fakeCanvas(), { coinsEarned: 30, coinsSpent: 8 });
+      expect(game.coins).toBe(22);
+      expect(game.canvas.dataset.coins).toBe('22');
     });
   });
 
@@ -695,6 +733,44 @@ test.describe('Space shooter rules', () => {
       tap('m');
       expect(game.state).toBe('paused');
     });
+
+    test('Q and E change the planet and leave the node alone', () => {
+      game.openMap();
+      const node = game.nodeId;
+      expect(game.canvas.dataset.planet).toBe('vega');
+
+      tap('q');
+      expect(game.canvas.dataset.planet).toBe('io');
+      expect(game.nodeId).toBe(node);
+      tap('q');
+      expect(game.canvas.dataset.planet).toBe('io');
+
+      tap('e');
+      tap('e');
+      expect(game.canvas.dataset.planet).toBe('ceres');
+      tap('e');
+      expect(game.canvas.dataset.planet).toBe('ceres');
+      expect(game.nodeId).toBe(node);
+    });
+
+    test('an arrow still steps after a planet change', () => {
+      game.openMap();
+      tap('e');
+      tap('ArrowRight');
+      expect(game.canvas.dataset.planet).toBe('ceres');
+      expect(game.nodeId).toBe('bend');
+    });
+
+    test('the level label is the name of the node under the cursor', () => {
+      game.openMap();
+      expect(game.canvas.dataset.levelName).toBe('ALPHA');
+
+      tap('ArrowRight');
+      expect(game.canvas.dataset.levelName).toBe('FORK');
+
+      tap('q');
+      expect(game.canvas.dataset.levelName).toBe('FORK');
+    });
   });
 
   test.describe('guns', () => {
@@ -816,47 +892,75 @@ test.describe('Space shooter rules', () => {
       expect(game.state).toBe('map');
     });
 
-    test('up and down equip the focused gun and stay on the banners', () => {
-      game.setLevel(5);
+    test('a gun is bought once its level is reached, and only a bought gun is equipped', () => {
+      const saved = [];
+      game.onLoadout = (loadout) => saved.push(loadout);
       game.openUpgrades();
-      tap('ArrowRight');
+      tap('d');
+      expect(game.canvas.dataset).toMatchObject({ gun: 'beam', locked: '5' });
+      tap('Enter');
+      expect(game.state).toBe('upgrades');
+      expect(game.loadout.owned).toEqual(['blaster']);
+
+      // The level is reached, but the wallet is 1 short.
+      game.setLevel(5);
+      game.addCoins(49);
+      tap('Enter');
       tap('w');
       expect(game.state).toBe('upgrades');
-      expect(game.loadout.gun).toBe('beam');
+      expect(game.canvas.dataset.locked).toBe('');
+      expect(game.loadout).toMatchObject({ gun: 'blaster', owned: ['blaster'] });
+      expect(saved).toEqual([]);
 
+      game.addCoins(1);
+      tap('Enter');
+      expect(game.state).toBe('weapon');
+      expect(game.loadout).toMatchObject({ gun: 'beam', owned: ['blaster', 'beam'] });
+      expect(game.coins).toBe(0);
+      expect(game.canvas.dataset).toMatchObject({ gun: 'beam', coins: '0' });
+      expect(saved).toHaveLength(1);
+
+      tap('Escape');
       tap('ArrowLeft');
       tap('ArrowDown');
       expect(game.state).toBe('upgrades');
       expect(game.loadout.gun).toBe('blaster');
 
       tap('ArrowRight');
+      tap('w');
+      expect(game.loadout.gun).toBe('beam');
+
+      // Pods need level 10, whatever the wallet holds.
+      game.addCoins(999);
       tap('ArrowRight');
+      tap('Enter');
       tap('s');
       expect(game.state).toBe('upgrades');
-      expect(game.loadout.gun).toBe('blaster');
+      expect(game.loadout).toMatchObject({ gun: 'beam', owned: ['blaster', 'beam'] });
+      expect(saved).toHaveLength(3);
     });
 
-    test('a locked banner does not open, and a reached node can be bought', () => {
+    test('a node is bought with coins at level 0, and a refused save hands them back', () => {
       game.openUpgrades();
-      tap('d');
-      expect(game.canvas.dataset).toMatchObject({ gun: 'beam', locked: '5' });
-      tap('Enter');
-      expect(game.state).toBe('upgrades');
-      expect(game.loadout.gun).toBe('blaster');
-
-      tap('a');
       tap('Enter');
       expect(game.state).toBe('weapon');
       expect(game.canvas.dataset).toMatchObject({ state: 'weapon', gun: 'blaster', row: 'rate', node: '0' });
       tap('Enter');
       expect(game.loadout.ranks.blaster.rate).toBe(0);
 
-      game.setProgress(500);
+      game.addCoins(8);
+      tap('Enter');
+      expect(game.level).toBe(0);
+      expect(game.loadout.ranks.blaster.rate).toBe(1);
+      expect(game.coins).toBe(0);
+      expect(game.canvas.dataset).toMatchObject({ node: '1', coins: '0' });
       tap('Enter');
       expect(game.loadout.ranks.blaster.rate).toBe(1);
-      expect(game.canvas.dataset.node).toBe('1');
-      tap('Enter');
-      expect(game.loadout.ranks.blaster.rate).toBe(1);
+
+      game.setLoadout(defaultLoadout());
+      expect(game.loadout.ranks.blaster.rate).toBe(0);
+      expect(game.coins).toBe(8);
+      expect(game.canvas.dataset.coins).toBe('8');
 
       tap('Escape');
       expect(game.state).toBe('upgrades');
@@ -884,6 +988,32 @@ test.describe('Space shooter rules', () => {
 
       tap('`');
       expect(game.state).toBe('map');
+    });
+
+    test('the coin rows fill the wallet, and the buy rows pay for what they take', () => {
+      const earned = [];
+      game.onCoins = (total) => earned.push(total);
+
+      game.runDebug('coins100');
+      expect(game.coins).toBe(100);
+      expect(game.canvas.dataset.coins).toBe('100');
+      game.runDebug('coins1000');
+      expect(game.coins).toBe(1100);
+      expect(earned).toEqual([100, 1100]);
+
+      // Every blaster node: 8 + 16 + 12 + 24. Guns that are not bought stay as they are.
+      game.runDebug('buy');
+      expect(game.loadout.ranks.blaster).toEqual({ rate: 2, shot: 1, pierce: 1 });
+      expect(game.loadout.ranks.beam).toEqual({ rate: 0, shot: 0, pierce: 0 });
+      expect(game.loadout.owned).toEqual(['blaster']);
+      expect(game.coinsEarned).toBe(1160);
+      expect(game.coins).toBe(1100);
+
+      game.runDebug('mount');
+      expect(game.level).toBe(5);
+      expect(game.loadout).toMatchObject({ gun: 'beam', owned: ['blaster', 'beam'] });
+      expect(game.coinsEarned).toBe(1210);
+      expect(game.coins).toBe(1100);
     });
 
     test('god mode keeps the ship alive', () => {

@@ -1,8 +1,9 @@
 /**
  * Guns and the nodes that upgrade them.
  *
- * Each node has its own level. Buying it requires that level, and the node to its left.
- * The same levels are copied in supabase/schema.sql (loadout_valid).
+ * A gun opens at its level and is then bought with coins. A node costs coins,
+ * and needs its gun and the node to its left. The same prices are copied in
+ * supabase/schema.sql (loadout_price).
  *
  * Blaster rank 0 is the original gun: one pellet, 0.45s cooldown.
 */
@@ -10,17 +11,13 @@
 export const GUN_ORDER = ['blaster', 'beam', 'pods'];
 export const STAT_ORDER = ['rate', 'shot', 'pierce'];
 
-/** Level required for each rank, left to right. The length is the cap. */
-export const NODE_LEVELS = {
-  blaster: { rate: [2, 4], shot: [3], pierce: [6] },
-  beam: { rate: [7, 9], shot: [8], pierce: [11] },
-  pods: { rate: [12, 14], shot: [13], pierce: [16] },
-};
+/** Coins for each rank, left to right, on every gun. The length is the cap. */
+export const NODE_PRICES = { rate: [8, 16], shot: [12], pierce: [24] };
 
 export const GUNS = {
-  blaster: { id: 'blaster', name: 'Blaster', unlockLevel: 0 },
-  beam: { id: 'beam', name: 'Beam', unlockLevel: 5 },
-  pods: { id: 'pods', name: 'Pods', unlockLevel: 10 },
+  blaster: { id: 'blaster', name: 'Blaster', unlockLevel: 0, price: 0 },
+  beam: { id: 'beam', name: 'Beam', unlockLevel: 5, price: 50 },
+  pods: { id: 'pods', name: 'Pods', unlockLevel: 10, price: 120 },
 };
 
 export const GUN_BLURB = {
@@ -61,13 +58,13 @@ export const POD_SPEED = 70;
 export const SHOT_OFFSET = 8;
 export const POD_STAGGER = 8;
 
-export function nodeLevel(gunId, statId, index) {
-  const level = NODE_LEVELS[gunId]?.[statId]?.[index];
-  return Number.isInteger(level) ? level : Infinity;
+export function nodePrice(statId, index) {
+  const price = NODE_PRICES[statId]?.[index];
+  return Number.isInteger(price) ? price : Infinity;
 }
 
 export function statCap(gunId, statId) {
-  return NODE_LEVELS[gunId]?.[statId]?.length ?? 0;
+  return GUNS[gunId] ? (NODE_PRICES[statId]?.length ?? 0) : 0;
 }
 
 function emptyRanks() {
@@ -77,6 +74,7 @@ function emptyRanks() {
 export function defaultLoadout() {
   return {
     gun: 'blaster',
+    owned: ['blaster'],
     ranks: { blaster: emptyRanks(), beam: emptyRanks(), pods: emptyRanks() },
   };
 }
@@ -85,7 +83,6 @@ export function defaultLoadout() {
 export function cloneLoadout(loadout) {
   const next = defaultLoadout();
   if (!loadout || typeof loadout !== 'object') return next;
-  if (GUNS[loadout.gun]) next.gun = loadout.gun;
   for (const gun of GUN_ORDER) {
     for (const stat of STAT_ORDER) {
       const value = loadout.ranks?.[gun]?.[stat];
@@ -93,6 +90,11 @@ export function cloneLoadout(loadout) {
       next.ranks[gun][stat] = Math.min(statCap(gun, stat), Math.max(0, value));
     }
   }
+  // A loadout saved before guns were bought has no list: it keeps the gun it mounted or upgraded.
+  const kept = (gun) => loadout.gun === gun || STAT_ORDER.some((stat) => next.ranks[gun][stat] > 0);
+  const owns = Array.isArray(loadout.owned) ? (gun) => loadout.owned.includes(gun) : kept;
+  next.owned = GUN_ORDER.filter((gun) => gun === 'blaster' || owns(gun));
+  if (next.owned.includes(loadout.gun)) next.gun = loadout.gun;
   return next;
 }
 
@@ -100,13 +102,34 @@ export function isUnlocked(gunId, level) {
   return Boolean(GUNS[gunId]) && level >= GUNS[gunId].unlockLevel;
 }
 
-export function loadoutError(previous, next, level) {
+export function isOwned(loadout, gunId) {
+  return Boolean(loadout?.owned?.includes(gunId));
+}
+
+/** Coins a loadout holds: its guns and every node bought on them. */
+export function loadoutPrice(loadout) {
+  let total = 0;
+  for (const gun of GUN_ORDER) {
+    if (isOwned(loadout, gun)) total += GUNS[gun].price;
+    for (const stat of STAT_ORDER) {
+      for (let i = 0; i < loadout.ranks[gun][stat]; i += 1) total += nodePrice(stat, i);
+    }
+  }
+  return total;
+}
+
+/** `coins` is the balance held with `previous`. What `next` adds is paid from it. */
+export function loadoutError(previous, next, level, coins) {
   if (!next || typeof next !== 'object' || !GUNS[next.gun]) return 'That loadout is not allowed';
   if (!next.ranks || typeof next.ranks !== 'object') return 'That loadout is not allowed';
   if (!Number.isInteger(level) || level < 0) return 'That loadout is not allowed';
-  if (!isUnlocked(next.gun, level)) return 'That gun is locked';
+  if (!Number.isInteger(coins) || coins < 0) return 'That loadout is not allowed';
+  if (!Array.isArray(next.owned) || !next.owned.includes('blaster')) return 'That loadout is not allowed';
+  if (!next.owned.every((gun) => isUnlocked(gun, level))) return 'That gun is locked';
+  if (!isOwned(next, next.gun)) return 'That gun is locked';
 
   const prev = cloneLoadout(previous);
+  if (!prev.owned.every((gun) => isOwned(next, gun))) return 'A gun cannot be sold';
   for (const gun of GUN_ORDER) {
     const ranks = next.ranks[gun];
     if (!ranks || typeof ranks !== 'object') return 'That loadout is not allowed';
@@ -115,30 +138,43 @@ export function loadoutError(previous, next, level) {
       const cap = statCap(gun, stat);
       if (!Number.isInteger(value) || value < 0 || value > cap) return 'That loadout is not allowed';
       if (value < prev.ranks[gun][stat]) return 'A rank cannot go down';
-      if (value > 0 && level < nodeLevel(gun, stat, value - 1)) return 'That loadout is not allowed';
+      if (value > 0 && !isOwned(next, gun)) return 'That loadout is not allowed';
     }
   }
+  if (loadoutPrice(next) - loadoutPrice(prev) > coins) return 'Not enough coins';
   return null;
 }
 
 /**
- * Buys the next node on one row. `reason` is "locked", "capped", or "unknown".
+ * Buys the next node on one row. `reason` is "locked", "capped", "poor", or "unknown".
  * The returned loadout is a new object.
  */
-export function claim(loadout, level, gunId, statId) {
+export function claim(loadout, coins, gunId, statId) {
   if (!STAT_ORDER.includes(statId) || !GUNS[gunId]) return { ok: false, reason: 'unknown' };
-  if (!isUnlocked(gunId, level)) return { ok: false, reason: 'locked' };
+  if (!isOwned(loadout, gunId)) return { ok: false, reason: 'locked' };
   const rank = loadout.ranks[gunId]?.[statId] ?? 0;
   if (rank >= statCap(gunId, statId)) return { ok: false, reason: 'capped' };
-  if (level < nodeLevel(gunId, statId, rank)) return { ok: false, reason: 'locked' };
+  if (coins < nodePrice(statId, rank)) return { ok: false, reason: 'poor' };
   const next = cloneLoadout(loadout);
   next.ranks[gunId][statId] = rank + 1;
   return { ok: true, loadout: next };
 }
 
-export function equip(loadout, level, gunId) {
+/** Buys a gun whose level is reached. `reason` is "locked", "owned", "poor", or "unknown". */
+export function buyGun(loadout, level, coins, gunId) {
   if (!GUNS[gunId]) return { ok: false, reason: 'unknown' };
+  if (isOwned(loadout, gunId)) return { ok: false, reason: 'owned' };
   if (!isUnlocked(gunId, level)) return { ok: false, reason: 'locked' };
+  if (coins < GUNS[gunId].price) return { ok: false, reason: 'poor' };
+  const next = cloneLoadout(loadout);
+  next.owned = GUN_ORDER.filter((gun) => gun === gunId || next.owned.includes(gun));
+  return { ok: true, loadout: next };
+}
+
+/** Mounts a bought gun. */
+export function equip(loadout, gunId) {
+  if (!GUNS[gunId]) return { ok: false, reason: 'unknown' };
+  if (!isOwned(loadout, gunId)) return { ok: false, reason: 'locked' };
   if (loadout.gun === gunId) return { ok: true, loadout };
   const next = cloneLoadout(loadout);
   next.gun = gunId;
@@ -159,12 +195,10 @@ export function nodeBlurb(gunId, statId, index) {
 /**
  * Whether that node can be bought. `rank` is how many nodes on the row are owned.
  */
-export function nodeStatus(gunId, statId, index, rank, level) {
+export function nodeStatus(statId, index, rank) {
   if (index < rank) return 'OWNED';
   if (index > rank) return 'BUY THE NODE ON THE LEFT';
-  const need = nodeLevel(gunId, statId, index);
-  if (level < need) return `NEEDS LEVEL ${need}`;
-  return 'PRESS SPACE OR ENTER';
+  return `COSTS ${nodePrice(statId, index)}`;
 }
 
 export function cooldownFor(gunId, ranks) {

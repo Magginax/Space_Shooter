@@ -9,8 +9,7 @@ test.describe('Home page', () => {
     await homePage.expectLoaded();
   });
 
-  test('nav link scrolls to the game section', async ({ homePage }) => {
-    await homePage.clickNav('Game');
-    await homePage.expectScrolledToGame();
+  test('the Game link points at the game page', async ({ homePage }) => {
+    await homePage.expectGameLink();
   });
 });
