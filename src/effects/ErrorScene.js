@@ -234,6 +234,7 @@ export class ErrorScene extends LcdScene {
     this.scene = Object.hasOwn(STILL, type) ? type : null;
     this.prevTime = 0;
     canvas.dataset.scene = this.scene ?? 'generic';
+    if (this.scene === 'scoreRejected') canvas.dataset.dialog = 'hidden';
     if (this.scene && this.reducedMotion) {
       // Play the last moments before the still frame, so its sparks are in the picture.
       this.time = STILL[this.scene] - 0.4;
@@ -1307,6 +1308,9 @@ export class ErrorScene extends LcdScene {
   }
 
   scoreRejectedTick() {
+    // The page's dialog (login.css) shows from just after the stamp until the next pilot walks up.
+    const dialog = this.time % BOOTH.loop >= BOOTH.stamp + 0.25 ? 'shown' : 'hidden';
+    if (this.canvas.dataset.dialog !== dialog) this.canvas.dataset.dialog = dialog;
     if (this.every(BOOTH.loop, BOOTH.stamp)) {
       const { cx, record } = this.booth();
       this.shockWaves.push({ x: cx + 1, y: record.y + 10, life: 0.35 });

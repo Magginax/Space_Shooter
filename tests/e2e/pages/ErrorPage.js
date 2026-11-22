@@ -48,6 +48,12 @@ export class ErrorPage {
     await expect(this.canvas).toHaveAttribute('data-scene', scene);
   }
 
+  /** 400: the scene shows the dialog after each stamp and hides it for the next pilot (one loop is 9 s). */
+  async expectDialogShown(shown) {
+    await expect(this.canvas).toHaveAttribute('data-dialog', shown ? 'shown' : 'hidden', { timeout: 10_000 });
+    await expect(this.panel).toHaveCSS('opacity', shown ? '1' : '0');
+  }
+
   async expectCode(code) {
     await expect(this.code).toHaveText(code);
   }

@@ -42,7 +42,7 @@ export class FakeSupabase {
     this.profileStatus = 200;
     this.loginStatus = 200;
     this.scoresStatus = 200;
-    this.accounts = [{ username: 'ace_pilot', displayName: 'ace_pilot', password: PASSWORD, xp: 0, coinsEarned: 0 }];
+    this.accounts = [{ username: 'ace_pilot', displayName: 'ace_pilot', password: PASSWORD, xp: 0 }];
     this.current = null; // the account that is logged in
   }
 

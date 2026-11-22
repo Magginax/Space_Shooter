@@ -41,6 +41,15 @@ test.describe('Error page', () => {
     await errorPage.expectScene('serverError');
   });
 
+  test('the 400 dialog comes back after every stamp', async ({ errorPage }) => {
+    await errorPage.open('scoreRejected');
+
+    await errorPage.expectDialogShown(false);
+    await errorPage.expectDialogShown(true);
+    // The loop starts again: the next pilot walks up without the dialog.
+    await errorPage.expectDialogShown(false);
+  });
+
   test('every scene draws without script errors', async ({ errorPage }) => {
     const scenes = ['notFound', 'forbidden', 'sessionExpired', 'loginRequired', 'scoreRejected', 'scoreConflict', 'rateLimited', 'serverError', 'offline', 'leaderboardOffline', 'maintenance'];
     for (const scene of scenes) {
